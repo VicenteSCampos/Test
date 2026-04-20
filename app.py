@@ -1,3 +1,4 @@
+import logging
 import os
 import threading
 from datetime import datetime
@@ -8,7 +9,14 @@ import customtkinter as ctk
 from dotenv import load_dotenv
 
 # Cargar .env desde la misma carpeta del script
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+_base = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(dotenv_path=os.path.join(_base, ".env"))
+
+logging.basicConfig(
+    filename=os.path.join(_base, "error.log"),
+    level=logging.DEBUG,
+    format="%(asctime)s %(levelname)s: %(message)s",
+)
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -182,8 +190,10 @@ class ClaseObsidianApp(ctk.CTk):
             self._set_progress(1.0, "¡Completado!")
 
         except Exception as e:
+            logging.exception("Error durante el procesamiento")
             self._log(f"❌ Error: {type(e).__name__}: {e}")
             self._set_progress(0, "Error al procesar")
+            self.after(0, lambda: messagebox.showerror("Error", f"{type(e).__name__}: {e}"))
         finally:
             self.after(0, lambda: self.process_btn.configure(
                 state="normal", text="🚀  Procesar Clase"))
