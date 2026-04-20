@@ -518,6 +518,73 @@ class ClaseObsidianApp(ctk.CTk):
         self._log(f"✅ Guardado: {filename}")
 
 
+class SetupDialog(ctk.CTkToplevel):
+    def __init__(self):
+        super().__init__()
+        self.title("Configuración inicial")
+        self.geometry("460x280")
+        self.resizable(False, False)
+        self.grab_set()
+        self.api_key = None
+        self._setup_ui()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _setup_ui(self):
+        ctk.CTkLabel(self, text="🎙️ Clase → Obsidian",
+                     font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(25, 4))
+        ctk.CTkLabel(self, text="Configuración inicial — solo se hace una vez",
+                     text_color="gray").pack(pady=(0, 20))
+
+        ctk.CTkLabel(self, text="API Key de Anthropic:",
+                     font=ctk.CTkFont(weight="bold"), anchor="w").pack(fill="x", padx=30)
+        self.key_entry = ctk.CTkEntry(self, placeholder_text="sk-ant-api03-...",
+                                      height=40, show="•")
+        self.key_entry.pack(fill="x", padx=30, pady=(5, 6))
+
+        ctk.CTkButton(self, text="👁 Mostrar / Ocultar", width=160, height=28,
+                      fg_color="gray30", hover_color="gray40",
+                      command=self._toggle_show).pack(pady=(0, 15))
+
+        ctk.CTkButton(self, text="Guardar y continuar",
+                      height=42, font=ctk.CTkFont(size=14, weight="bold"),
+                      command=self._save).pack(fill="x", padx=30, pady=(0, 20))
+
+    def _toggle_show(self):
+        self.key_entry.configure(show="" if self.key_entry.cget("show") == "•" else "•")
+
+    def _save(self):
+        key = self.key_entry.get().strip()
+        if not key.startswith("sk-ant-"):
+            messagebox.showerror("Error", "La key debe comenzar con 'sk-ant-'", parent=self)
+            return
+        env_path = os.path.join(_base, ".env")
+        vault = os.getenv("OBSIDIAN_VAULT", r"C:\Users\vicen\Desktop\claude\Claude")
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.write(f"ANTHROPIC_API_KEY={key}\n")
+            f.write(f"OBSIDIAN_VAULT={vault}\n")
+        load_dotenv(dotenv_path=env_path, override=True)
+        self.api_key = key
+        self.destroy()
+
+    def _on_close(self):
+        if not self.api_key:
+            if messagebox.askokcancel("Salir", "Sin API key la app no puede funcionar. ¿Salir?",
+                                      parent=self):
+                self.master.destroy()
+
+
 if __name__ == "__main__":
+    root = ctk.CTk()
+    root.withdraw()
+
+    if not os.getenv("ANTHROPIC_API_KEY"):
+        dialog = SetupDialog()
+        dialog.master = root
+        root.wait_window(dialog)
+        if not os.getenv("ANTHROPIC_API_KEY"):
+            root.destroy()
+            exit()
+
+    root.destroy()
     app = ClaseObsidianApp()
     app.mainloop()
