@@ -29,6 +29,7 @@ class ClaseObsidianApp(ctk.CTk):
         self.geometry("640x860")
         self.resizable(False, False)
         self.audio_path = None
+        self._whisper_model = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -204,7 +205,8 @@ class ClaseObsidianApp(ctk.CTk):
         self._log("⏳ Cargando modelo Whisper (la primera vez descarga el modelo)...")
         self._set_progress(0.05, "Cargando modelo...")
 
-        model = WhisperModel(self.model_var.get(), device="cuda", compute_type="int8")
+        self._whisper_model = WhisperModel(self.model_var.get(), device="cuda", compute_type="int8")
+        model = self._whisper_model
 
         self._log(f"🎙️ Transcribiendo con {self.model_var.get()}...")
         self._set_progress(0.1, "Transcribiendo audio...")
