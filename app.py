@@ -78,6 +78,9 @@ def save_pdf(content: str, filepath: str):
             start = i + 1
             break
 
+    lm = pdf.l_margin
+    pw = pdf.w - pdf.l_margin - pdf.r_margin  # usable width
+
     in_mermaid = False
     for line in lines[start:]:
         s = _strip_emoji(line.rstrip()).strip()
@@ -90,50 +93,48 @@ def save_pdf(content: str, filepath: str):
                 in_mermaid = False
             continue
 
+        pdf.set_x(lm)
+
         if not s:
             pdf.ln(2)
         elif s.startswith("## "):
             pdf.set_font("Helvetica", "B", 14)
             pdf.set_text_color(30, 120, 200)
             pdf.ln(4)
-            pdf.multi_cell(0, 8, s[3:])
+            pdf.multi_cell(pw, 8, s[3:])
             pdf.set_text_color(0, 0, 0)
             pdf.ln(1)
         elif s.startswith("### "):
             pdf.set_font("Helvetica", "B", 11)
             pdf.ln(3)
-            pdf.multi_cell(0, 7, s[4:])
+            pdf.multi_cell(pw, 7, s[4:])
             pdf.ln(1)
         elif s.startswith("> "):
             pdf.set_font("Helvetica", "I", 10)
             pdf.set_fill_color(240, 240, 240)
-            pdf.set_x(28)
-            pdf.multi_cell(0, 6, s[2:], fill=True)
+            indent = 8
+            pdf.set_x(lm + indent)
+            pdf.multi_cell(pw - indent, 6, s[2:], fill=True)
         elif re.match(r"^[-*] ", s):
             pdf.set_font("Helvetica", "", 10)
-            pdf.set_x(26)
-            pdf.multi_cell(0, 6, f"• {s[2:]}")
+            indent = 6
+            pdf.set_x(lm + indent)
+            pdf.multi_cell(pw - indent, 6, f"• {s[2:]}")
         elif re.match(r"^\d+\.", s):
             pdf.set_font("Helvetica", "", 10)
-            pdf.set_x(26)
-            pdf.multi_cell(0, 6, s)
+            indent = 6
+            pdf.set_x(lm + indent)
+            pdf.multi_cell(pw - indent, 6, s)
         elif s == "---":
             pdf.ln(2)
             pdf.set_draw_color(180, 180, 180)
-            pdf.line(20, pdf.get_y(), 190, pdf.get_y())
+            pdf.line(lm, pdf.get_y(), lm + pw, pdf.get_y())
             pdf.ln(2)
         else:
-            parts = re.split(r"\*\*(.*?)\*\*", s)
-            if len(parts) > 1:
-                for i, part in enumerate(parts):
-                    if not part:
-                        continue
-                    pdf.set_font("Helvetica", "B" if i % 2 else "", 10)
-                    pdf.write(6, part)
-                pdf.ln(6)
-            else:
-                pdf.set_font("Helvetica", "", 10)
-                pdf.multi_cell(0, 6, s)
+            # Strip bold markers for PDF simplicity
+            clean = re.sub(r"\*\*(.*?)\*\*", r"\1", s)
+            pdf.set_font("Helvetica", "", 10)
+            pdf.multi_cell(pw, 6, clean)
 
     pdf.output(filepath)
 
