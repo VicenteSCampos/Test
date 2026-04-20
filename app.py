@@ -7,7 +7,8 @@ import anthropic
 import customtkinter as ctk
 from dotenv import load_dotenv
 
-load_dotenv()
+# Cargar .env desde la misma carpeta del script
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -17,7 +18,7 @@ class ClaseObsidianApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Clase → Obsidian")
-        self.geometry("640x780")
+        self.geometry("640x860")
         self.resizable(False, False)
         self.audio_path = None
         self._setup_ui()
@@ -76,6 +77,30 @@ class ClaseObsidianApp(ctk.CTk):
             ctk.CTkRadioButton(model_row, text=label, variable=self.model_var,
                                value=value).grid(row=0, column=i, padx=12)
 
+        # Destino
+        ctk.CTkLabel(frame, text="💾  Destino del documento",
+                     font=ctk.CTkFont(weight="bold")).grid(row=8, column=0, sticky="w", padx=15, pady=(10, 5))
+
+        dest_row = ctk.CTkFrame(frame, fg_color="transparent")
+        dest_row.grid(row=9, column=0, sticky="w", padx=15, pady=(0, 15))
+
+        self.dest_var = ctk.StringVar(value="obsidian")
+        ctk.CTkRadioButton(dest_row, text="Vault de Obsidian", variable=self.dest_var,
+                           value="obsidian", command=self._toggle_dest).grid(row=0, column=0, padx=(0, 20))
+        ctk.CTkRadioButton(dest_row, text="Guardar como archivo...", variable=self.dest_var,
+                           value="file", command=self._toggle_dest).grid(row=0, column=1)
+
+        # Ruta del vault (visible solo si destino = obsidian)
+        self.vault_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        self.vault_frame.grid(row=10, column=0, sticky="ew", padx=15, pady=(0, 15))
+        self.vault_frame.grid_columnconfigure(0, weight=1)
+
+        self.vault_entry = ctk.CTkEntry(self.vault_frame, height=36)
+        self.vault_entry.insert(0, os.getenv("OBSIDIAN_VAULT", r"C:\Users\vicen\Desktop\claude\Claude"))
+        self.vault_entry.grid(row=0, column=0, sticky="ew")
+        ctk.CTkButton(self.vault_frame, text="Cambiar", width=90,
+                      command=self._select_vault).grid(row=0, column=1, padx=(8, 0))
+
         # Botón
         self.process_btn = ctk.CTkButton(
             self, text="🚀  Procesar Clase",
@@ -101,6 +126,18 @@ class ClaseObsidianApp(ctk.CTk):
         self.log_box.pack(fill="both", expand=True, padx=20, pady=(0, 20))
 
     # ── helpers ──────────────────────────────────────────────────────────────
+
+    def _toggle_dest(self):
+        if self.dest_var.get() == "obsidian":
+            self.vault_frame.grid()
+        else:
+            self.vault_frame.grid_remove()
+
+    def _select_vault(self):
+        path = filedialog.askdirectory(title="Seleccionar carpeta del vault de Obsidian")
+        if path:
+            self.vault_entry.delete(0, "end")
+            self.vault_entry.insert(0, path)
 
     def _select_audio(self):
         path = filedialog.askopenfilename(
@@ -143,10 +180,9 @@ class ClaseObsidianApp(ctk.CTk):
             )
             self._save(content, self.asignatura_entry.get().strip(), self.fecha_entry.get().strip())
             self._set_progress(1.0, "¡Completado!")
-            self._log("✅ ¡Documento creado exitosamente en Obsidian!")
 
         except Exception as e:
-            self._log(f"❌ Error: {e}")
+            self._log(f"❌ Error: {type(e).__name__}: {e}")
             self._set_progress(0, "Error al procesar")
         finally:
             self.after(0, lambda: self.process_btn.configure(
@@ -187,7 +223,11 @@ class ClaseObsidianApp(ctk.CTk):
     def _call_claude(self, transcription: str, asignatura: str, fecha: str) -> str:
         self._log("🤖 Enviando a Claude AI para estructurar el documento...")
 
-        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError("No se encontró ANTHROPIC_API_KEY en el archivo .env")
+
+        client = anthropic.Anthropic(api_key=api_key)
 
         prompt = f"""Eres un asistente académico experto. Analiza la transcripción de una clase universitaria y genera un documento en Markdown con EXACTAMENTE estas 5 secciones:
 
@@ -230,17 +270,32 @@ TRANSCRIPCIÓN:
             max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
-        self._set_progress(0.9, "Guardando en Obsidian...")
+        self._set_progress(0.9, "Guardando documento...")
         return msg.content[0].text
 
     def _save(self, content: str, asignatura: str, fecha: str):
-        vault = os.getenv("OBSIDIAN_VAULT", r"C:\Users\vicen\Desktop\claude\Claude")
-        os.makedirs(vault, exist_ok=True)
         filename = f"{fecha} - {asignatura}.md"
-        filepath = os.path.join(vault, filename)
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(content)
-        self._log(f"💾 Guardado: {filename}")
+
+        if self.dest_var.get() == "obsidian":
+            vault = self.vault_entry.get().strip()
+            os.makedirs(vault, exist_ok=True)
+            filepath = os.path.join(vault, filename)
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(content)
+            self._log(f"✅ Guardado en Obsidian: {filename}")
+        else:
+            filepath = filedialog.asksaveasfilename(
+                title="Guardar documento",
+                defaultextension=".md",
+                initialfile=filename,
+                filetypes=[("Markdown", "*.md"), ("Texto", "*.txt")]
+            )
+            if filepath:
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(content)
+                self._log(f"✅ Documento guardado en: {filepath}")
+            else:
+                self._log("⚠️ Guardado cancelado por el usuario.")
 
 
 if __name__ == "__main__":
