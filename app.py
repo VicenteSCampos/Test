@@ -52,6 +52,19 @@ def _strip_emoji(text: str) -> str:
     return re.sub(r"[^\x00-\x7F\u00C0-\u024F\u0400-\u04FF]", "", text).strip()
 
 
+def _pdf_safe(text: str) -> str:
+    replacements = {
+        "\u2014": "--", "\u2013": "-", "\u2012": "-",
+        "\u2018": "'",  "\u2019": "'",
+        "\u201c": '"',  "\u201d": '"',
+        "\u2026": "...", "\u00b7": "-", "\u2022": "-",
+        "\u00a0": " ",  "\u2011": "-",
+    }
+    for ch, rep in replacements.items():
+        text = text.replace(ch, rep)
+    return text.encode("latin-1", errors="ignore").decode("latin-1")
+
+
 def save_pdf(content: str, filepath: str):
     from fpdf import FPDF
 
@@ -83,7 +96,7 @@ def save_pdf(content: str, filepath: str):
 
     in_mermaid = False
     for line in lines[start:]:
-        s = _strip_emoji(line.rstrip()).strip()
+        s = _pdf_safe(_strip_emoji(line.rstrip())).strip()
 
         if s.startswith("```mermaid"):
             in_mermaid = True
