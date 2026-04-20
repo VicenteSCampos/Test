@@ -2,3 +2,4 @@ faster-whisper
 anthropic
 customtkinter
 python-dotenv
+fpdf2

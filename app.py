@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import threading
 from datetime import datetime
 from tkinter import filedialog, messagebox
@@ -8,7 +9,6 @@ import anthropic
 import customtkinter as ctk
 from dotenv import load_dotenv
 
-# Cargar .env desde la misma carpeta del script
 _base = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(dotenv_path=os.path.join(_base, ".env"))
 
@@ -22,14 +22,87 @@ ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
 
+def _strip_emoji(text: str) -> str:
+    return re.sub(r'[^\x00-\x7F\u00C0-\u024F\u0400-\u04FF]', '', text).strip()
+
+
+def _save_pdf(content: str, filepath: str):
+    from fpdf import FPDF
+
+    class PDF(FPDF):
+        def footer(self):
+            self.set_y(-12)
+            self.set_font("Helvetica", "I", 8)
+            self.set_text_color(150, 150, 150)
+            self.cell(0, 10, f"Pagina {self.page_no()}", align="C")
+
+    pdf = PDF()
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.add_page()
+    pdf.set_margins(20, 20, 20)
+
+    for line in content.split("\n"):
+        raw = line.rstrip()
+        s = _strip_emoji(raw).strip()
+
+        if not s:
+            pdf.ln(2)
+        elif s.startswith("## "):
+            pdf.set_font("Helvetica", "B", 14)
+            pdf.set_text_color(30, 120, 200)
+            pdf.ln(4)
+            pdf.multi_cell(0, 8, s[3:])
+            pdf.set_text_color(0, 0, 0)
+            pdf.ln(1)
+        elif s.startswith("### "):
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.ln(3)
+            pdf.multi_cell(0, 7, s[4:])
+            pdf.ln(1)
+        elif s.startswith("> "):
+            pdf.set_font("Helvetica", "I", 10)
+            pdf.set_fill_color(240, 240, 240)
+            pdf.set_x(28)
+            pdf.multi_cell(0, 6, s[2:], fill=True)
+        elif re.match(r'^[-*] ', s):
+            pdf.set_font("Helvetica", "", 10)
+            pdf.set_x(26)
+            pdf.multi_cell(0, 6, f"• {s[2:]}")
+        elif re.match(r'^\d+\.', s):
+            pdf.set_font("Helvetica", "", 10)
+            pdf.set_x(26)
+            pdf.multi_cell(0, 6, s)
+        elif s == "---":
+            pdf.ln(2)
+            pdf.set_draw_color(180, 180, 180)
+            pdf.line(20, pdf.get_y(), 190, pdf.get_y())
+            pdf.ln(2)
+        else:
+            # Render inline bold (**text**)
+            parts = re.split(r'\*\*(.*?)\*\*', s)
+            if len(parts) > 1:
+                for i, part in enumerate(parts):
+                    if not part:
+                        continue
+                    pdf.set_font("Helvetica", "B" if i % 2 else "", 10)
+                    pdf.write(6, part)
+                pdf.ln(6)
+            else:
+                pdf.set_font("Helvetica", "", 10)
+                pdf.multi_cell(0, 6, s)
+
+    pdf.output(filepath)
+
+
 class ClaseObsidianApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Clase → Obsidian")
-        self.geometry("640x860")
+        self.geometry("640x960")
         self.resizable(False, False)
         self.audio_path = None
         self._whisper_model = None
+        self._save_path = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -45,11 +118,9 @@ class ClaseObsidianApp(ctk.CTk):
         # Audio
         ctk.CTkLabel(frame, text="📁  Archivo de Audio",
                      font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, sticky="w", padx=15, pady=(15, 5))
-
         audio_row = ctk.CTkFrame(frame, fg_color="transparent")
         audio_row.grid(row=1, column=0, sticky="ew", padx=15, pady=(0, 10))
         audio_row.grid_columnconfigure(0, weight=1)
-
         self.audio_label = ctk.CTkLabel(audio_row, text="Ningún archivo seleccionado",
                                         text_color="gray", anchor="w")
         self.audio_label.grid(row=0, column=0, sticky="ew")
@@ -69,41 +140,44 @@ class ClaseObsidianApp(ctk.CTk):
         self.fecha_entry.insert(0, datetime.now().strftime("%Y-%m-%d"))
         self.fecha_entry.grid(row=5, column=0, sticky="ew", padx=15, pady=(0, 10))
 
-        # Modelo
+        # Modelo Whisper
         ctk.CTkLabel(frame, text="🤖  Modelo Whisper",
                      font=ctk.CTkFont(weight="bold")).grid(row=6, column=0, sticky="w", padx=15, pady=(10, 5))
-
         model_row = ctk.CTkFrame(frame, fg_color="transparent")
-        model_row.grid(row=7, column=0, sticky="w", padx=15, pady=(0, 15))
-
+        model_row.grid(row=7, column=0, sticky="w", padx=15, pady=(0, 10))
         self.model_var = ctk.StringVar(value="large-v3")
-        models = [
-            ("small  (~5 min)", "small"),
-            ("medium  (~12 min)", "medium"),
-            ("large-v3  (~20 min)", "large-v3"),
-        ]
-        for i, (label, value) in enumerate(models):
+        for i, (label, value) in enumerate([("small  (~5 min)", "small"),
+                                             ("medium  (~12 min)", "medium"),
+                                             ("large-v3  (~20 min)", "large-v3")]):
             ctk.CTkRadioButton(model_row, text=label, variable=self.model_var,
                                value=value).grid(row=0, column=i, padx=12)
 
+        # Formato
+        ctk.CTkLabel(frame, text="📄  Formato del documento",
+                     font=ctk.CTkFont(weight="bold")).grid(row=8, column=0, sticky="w", padx=15, pady=(10, 5))
+        fmt_row = ctk.CTkFrame(frame, fg_color="transparent")
+        fmt_row.grid(row=9, column=0, sticky="w", padx=15, pady=(0, 10))
+        self.format_var = ctk.StringVar(value="md")
+        ctk.CTkRadioButton(fmt_row, text="Markdown (.md)", variable=self.format_var,
+                           value="md").grid(row=0, column=0, padx=(0, 20))
+        ctk.CTkRadioButton(fmt_row, text="PDF (.pdf)", variable=self.format_var,
+                           value="pdf").grid(row=0, column=1)
+
         # Destino
         ctk.CTkLabel(frame, text="💾  Destino del documento",
-                     font=ctk.CTkFont(weight="bold")).grid(row=8, column=0, sticky="w", padx=15, pady=(10, 5))
-
+                     font=ctk.CTkFont(weight="bold")).grid(row=10, column=0, sticky="w", padx=15, pady=(10, 5))
         dest_row = ctk.CTkFrame(frame, fg_color="transparent")
-        dest_row.grid(row=9, column=0, sticky="w", padx=15, pady=(0, 15))
-
+        dest_row.grid(row=11, column=0, sticky="w", padx=15, pady=(0, 10))
         self.dest_var = ctk.StringVar(value="obsidian")
         ctk.CTkRadioButton(dest_row, text="Vault de Obsidian", variable=self.dest_var,
                            value="obsidian", command=self._toggle_dest).grid(row=0, column=0, padx=(0, 20))
         ctk.CTkRadioButton(dest_row, text="Guardar como archivo...", variable=self.dest_var,
                            value="file", command=self._toggle_dest).grid(row=0, column=1)
 
-        # Ruta del vault (visible solo si destino = obsidian)
+        # Ruta vault
         self.vault_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        self.vault_frame.grid(row=10, column=0, sticky="ew", padx=15, pady=(0, 15))
+        self.vault_frame.grid(row=12, column=0, sticky="ew", padx=15, pady=(0, 15))
         self.vault_frame.grid_columnconfigure(0, weight=1)
-
         self.vault_entry = ctk.CTkEntry(self.vault_frame, height=36)
         self.vault_entry.insert(0, os.getenv("OBSIDIAN_VAULT", r"C:\Users\vicen\Desktop\claude\Claude"))
         self.vault_entry.grid(row=0, column=0, sticky="ew")
@@ -116,12 +190,11 @@ class ClaseObsidianApp(ctk.CTk):
             command=self._start_processing,
             height=50, font=ctk.CTkFont(size=16, weight="bold"),
         )
-        self.process_btn.pack(pady=18, padx=20, fill="x")
+        self.process_btn.pack(pady=15, padx=20, fill="x")
 
         # Progreso
         prog_frame = ctk.CTkFrame(self, fg_color="transparent")
         prog_frame.pack(fill="x", padx=20)
-
         self.progress_label = ctk.CTkLabel(prog_frame, text="", text_color="gray")
         self.progress_label.pack(anchor="w")
         self.progress_bar = ctk.CTkProgressBar(prog_frame)
@@ -130,8 +203,8 @@ class ClaseObsidianApp(ctk.CTk):
 
         # Log
         ctk.CTkLabel(self, text="📋  Estado:", anchor="w",
-                     font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=20, pady=(12, 3))
-        self.log_box = ctk.CTkTextbox(self, height=165, font=ctk.CTkFont(size=12))
+                     font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=20, pady=(10, 3))
+        self.log_box = ctk.CTkTextbox(self, height=150, font=ctk.CTkFont(size=12))
         self.log_box.pack(fill="both", expand=True, padx=20, pady=(0, 20))
 
     # ── helpers ──────────────────────────────────────────────────────────────
@@ -172,6 +245,24 @@ class ClaseObsidianApp(ctk.CTk):
             messagebox.showerror("Error", "Ingresa la asignatura.")
             return
 
+        # Si es "Guardar como", pedir ruta ANTES de iniciar el hilo (debe ser en el hilo principal)
+        if self.dest_var.get() == "file":
+            fmt = self.format_var.get()
+            ext = ".pdf" if fmt == "pdf" else ".md"
+            nombre = f"{self.fecha_entry.get().strip()} - {self.asignatura_entry.get().strip()}{ext}"
+            ftypes = [("PDF", "*.pdf")] if fmt == "pdf" else [("Markdown", "*.md")]
+            path = filedialog.asksaveasfilename(
+                title="Guardar documento",
+                defaultextension=ext,
+                initialfile=nombre,
+                filetypes=ftypes,
+            )
+            if not path:
+                return
+            self._save_path = path
+        else:
+            self._save_path = None
+
         self.process_btn.configure(state="disabled", text="⏳  Procesando...")
         self.log_box.delete("1.0", "end")
         self.progress_bar.set(0)
@@ -187,7 +278,8 @@ class ClaseObsidianApp(ctk.CTk):
                 self.asignatura_entry.get().strip(),
                 self.fecha_entry.get().strip(),
             )
-            self._save(content, self.asignatura_entry.get().strip(), self.fecha_entry.get().strip())
+            full_content = content + f"\n\n---\n\n## 📄 Transcripción\n\n{transcription}"
+            self._save(full_content, self.asignatura_entry.get().strip(), self.fecha_entry.get().strip())
             self._set_progress(1.0, "¡Completado!")
 
         except Exception as e:
@@ -202,7 +294,7 @@ class ClaseObsidianApp(ctk.CTk):
     def _transcribe(self) -> str:
         from faster_whisper import WhisperModel
 
-        self._log("⏳ Cargando modelo Whisper (la primera vez descarga el modelo)...")
+        self._log("⏳ Cargando modelo Whisper...")
         self._set_progress(0.05, "Cargando modelo...")
 
         self._whisper_model = WhisperModel(self.model_var.get(), device="cuda", compute_type="int8")
@@ -218,13 +310,9 @@ class ClaseObsidianApp(ctk.CTk):
             parts.append(seg.text.strip())
             if info.duration > 0:
                 pct = 0.1 + (seg.end / info.duration) * 0.5
-                mins_done = int(seg.end / 60)
-                secs_done = int(seg.end % 60)
-                total_mins = int(info.duration / 60)
-                total_secs = int(info.duration % 60)
                 self._set_progress(
                     min(pct, 0.6),
-                    f"Transcribiendo... {mins_done}:{secs_done:02d} / {total_mins}:{total_secs:02d}"
+                    f"Transcribiendo... {int(seg.end/60)}:{int(seg.end%60):02d} / {int(info.duration/60)}:{int(info.duration%60):02d}"
                 )
 
         transcription = " ".join(parts)
@@ -286,28 +374,23 @@ TRANSCRIPCIÓN:
         return msg.content[0].text
 
     def _save(self, content: str, asignatura: str, fecha: str):
-        filename = f"{fecha} - {asignatura}.md"
+        fmt = self.format_var.get()
+        ext = ".pdf" if fmt == "pdf" else ".md"
 
         if self.dest_var.get() == "obsidian":
             vault = self.vault_entry.get().strip()
             os.makedirs(vault, exist_ok=True)
-            filepath = os.path.join(vault, filename)
+            filepath = os.path.join(vault, f"{fecha} - {asignatura}{ext}")
+        else:
+            filepath = self._save_path
+
+        if fmt == "pdf":
+            _save_pdf(content, filepath)
+        else:
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(content)
-            self._log(f"✅ Guardado en Obsidian: {filename}")
-        else:
-            filepath = filedialog.asksaveasfilename(
-                title="Guardar documento",
-                defaultextension=".md",
-                initialfile=filename,
-                filetypes=[("Markdown", "*.md"), ("Texto", "*.txt")]
-            )
-            if filepath:
-                with open(filepath, "w", encoding="utf-8") as f:
-                    f.write(content)
-                self._log(f"✅ Documento guardado en: {filepath}")
-            else:
-                self._log("⚠️ Guardado cancelado por el usuario.")
+
+        self._log(f"✅ Guardado: {os.path.basename(filepath)}")
 
 
 if __name__ == "__main__":
