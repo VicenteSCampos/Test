@@ -226,12 +226,6 @@ class ClaseObsidianApp(ctk.CTk):
                 )
 
         transcription = " ".join(parts)
-
-        # Liberar memoria GPU antes de llamar a la API
-        del model
-        import gc
-        gc.collect()
-
         self._log(f"✅ Transcripción completa — {len(transcription.split())} palabras")
         self._set_progress(0.65, "Procesando con Claude AI...")
         return transcription
