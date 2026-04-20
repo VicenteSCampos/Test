@@ -3,3 +3,4 @@ anthropic
 customtkinter
 python-dotenv
 fpdf2
+python-pptx
