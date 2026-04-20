@@ -53,16 +53,7 @@ def _strip_emoji(text: str) -> str:
 
 
 def _pdf_safe(text: str) -> str:
-    replacements = {
-        "\u2014": "--", "\u2013": "-", "\u2012": "-",
-        "\u2018": "'",  "\u2019": "'",
-        "\u201c": '"',  "\u201d": '"',
-        "\u2026": "...", "\u00b7": "-", "\u2022": "-",
-        "\u00a0": " ",  "\u2011": "-",
-    }
-    for ch, rep in replacements.items():
-        text = text.replace(ch, rep)
-    return text.encode("latin-1", errors="ignore").decode("latin-1")
+    return text.replace("\u00a0", " ")  # solo reemplaza espacio no-rompible
 
 
 def save_pdf(content: str, filepath: str):
@@ -71,7 +62,7 @@ def save_pdf(content: str, filepath: str):
     class PDF(FPDF):
         def footer(self):
             self.set_y(-12)
-            self.set_font("Helvetica", "I", 8)
+            self.set_font("Arial", "I", 8)
             self.set_text_color(150, 150, 150)
             self.cell(0, 10, f"Pagina {self.page_no()}", align="C")
 
@@ -79,6 +70,9 @@ def save_pdf(content: str, filepath: str):
     pdf.set_auto_page_break(auto=True, margin=20)
     pdf.add_page()
     pdf.set_margins(20, 20, 20)
+    pdf.add_font("Arial", fname="C:\\Windows\\Fonts\\arial.ttf")
+    pdf.add_font("Arial", style="B", fname="C:\\Windows\\Fonts\\arialbd.ttf")
+    pdf.add_font("Arial", style="I", fname="C:\\Windows\\Fonts\\ariali.ttf")
 
     lines = content.split("\n")
     # Skip YAML frontmatter
@@ -111,30 +105,30 @@ def save_pdf(content: str, filepath: str):
         if not s:
             pdf.ln(2)
         elif s.startswith("## "):
-            pdf.set_font("Helvetica", "B", 14)
+            pdf.set_font("Arial", "B", 14)
             pdf.set_text_color(30, 120, 200)
             pdf.ln(4)
             pdf.multi_cell(pw, 8, s[3:])
             pdf.set_text_color(0, 0, 0)
             pdf.ln(1)
         elif s.startswith("### "):
-            pdf.set_font("Helvetica", "B", 11)
+            pdf.set_font("Arial", "B", 11)
             pdf.ln(3)
             pdf.multi_cell(pw, 7, s[4:])
             pdf.ln(1)
         elif s.startswith("> "):
-            pdf.set_font("Helvetica", "I", 10)
+            pdf.set_font("Arial", "I", 10)
             pdf.set_fill_color(240, 240, 240)
             indent = 8
             pdf.set_x(lm + indent)
             pdf.multi_cell(pw - indent, 6, s[2:], fill=True)
         elif re.match(r"^[-*] ", s):
-            pdf.set_font("Helvetica", "", 10)
+            pdf.set_font("Arial", "", 10)
             indent = 6
             pdf.set_x(lm + indent)
             pdf.multi_cell(pw - indent, 6, f"• {s[2:]}")
         elif re.match(r"^\d+\.", s):
-            pdf.set_font("Helvetica", "", 10)
+            pdf.set_font("Arial", "", 10)
             indent = 6
             pdf.set_x(lm + indent)
             pdf.multi_cell(pw - indent, 6, s)
@@ -146,7 +140,7 @@ def save_pdf(content: str, filepath: str):
         else:
             # Strip bold markers for PDF simplicity
             clean = re.sub(r"\*\*(.*?)\*\*", r"\1", s)
-            pdf.set_font("Helvetica", "", 10)
+            pdf.set_font("Arial", "", 10)
             pdf.multi_cell(pw, 6, clean)
 
     pdf.output(filepath)
