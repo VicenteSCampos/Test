@@ -502,8 +502,8 @@ class ClaseObsidianApp(ctk.CTk):
 
         if self.dest_var.get() == "obsidian":
             vault = self.vault_entry.get().strip()
-            folder = os.path.join(vault, asignatura)
-            os.makedirs(folder, exist_ok=True)
+            subfolder = os.path.join(vault, asignatura)
+            folder = subfolder if os.path.isdir(subfolder) else vault
             filepath = os.path.join(folder, filename)
         else:
             filepath = self._save_path
