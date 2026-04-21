@@ -30,6 +30,7 @@ class QueueItem:
     asignatura: str = ""
     fecha: str = ""
     pptx_path: str = ""
+    nombre: str = ""
     estado: str = "pendiente"  # pendiente / procesando / listo / error
 
 
@@ -217,7 +218,16 @@ class EditQueueItemDialog(ctk.CTkToplevel):
                      font=ctk.CTkFont(weight="bold"), anchor="w").pack(fill="x", **pad)
         self._fecha_entry = ctk.CTkEntry(self, height=36)
         self._fecha_entry.insert(0, item.fecha if item else datetime.now().strftime("%Y-%m-%d"))
-        self._fecha_entry.pack(fill="x", padx=20, pady=(0, 14))
+        self._fecha_entry.pack(fill="x", padx=20, pady=(0, 10))
+
+        # Nombre del archivo
+        ctk.CTkLabel(self, text="Nombre del archivo (opcional)",
+                     font=ctk.CTkFont(weight="bold"), anchor="w").pack(fill="x", **pad)
+        ctk.CTkLabel(self, text="Si se deja vacío se usará: fecha - asignatura",
+                     text_color="gray", anchor="w", font=ctk.CTkFont(size=11)).pack(fill="x", padx=20)
+        self._nombre_entry = ctk.CTkEntry(self, height=36, placeholder_text="ej: Clase 1 - Introducción")
+        self._nombre_entry.insert(0, item.nombre if item else "")
+        self._nombre_entry.pack(fill="x", padx=20, pady=(4, 14))
 
         # Buttons
         btn_row = ctk.CTkFrame(self, fg_color="transparent")
@@ -305,6 +315,7 @@ class EditQueueItemDialog(ctk.CTkToplevel):
             asignatura=self._asig_combo.get().strip(),
             fecha=self._fecha_entry.get().strip(),
             pptx_path=self._pptx_path,
+            nombre=self._nombre_entry.get().strip(),
         )
         self.destroy()
 
@@ -601,7 +612,7 @@ class ClaseObsidianApp(ctk.CTk):
                         include_mermaid=is_obsidian_md,
                     )
                     full = content + f"\n\n---\n\n## 📄 Transcripción\n\n{transcription}"
-                    self._save(full, item.asignatura, item.fecha)
+                    self._save(full, item.asignatura, item.fecha, item.nombre)
 
                     item.estado = "listo"
                     success += 1
@@ -724,10 +735,11 @@ class ClaseObsidianApp(ctk.CTk):
         self._set_progress(0.9, "Guardando documento...")
         return msg.content[0].text
 
-    def _save(self, content: str, asignatura: str, fecha: str):
+    def _save(self, content: str, asignatura: str, fecha: str, nombre: str = ""):
         fmt = self.format_var.get()
         ext = ".pdf" if fmt == "pdf" else ".md"
-        filename = f"{fecha} - {asignatura}{ext}"
+        base = nombre if nombre else f"{fecha} - {asignatura}"
+        filename = f"{base}{ext}"
 
         if self.dest_var.get() == "obsidian":
             vault = self.vault_entry.get().strip()
