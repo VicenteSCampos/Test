@@ -349,6 +349,7 @@ class ClaseObsidianApp(ctk.CTk):
         style = ttk.Style()
         style.theme_use("clam")
         _TAB_BG = "#1e1e1e"
+
         style.configure("App.TNotebook", background=_TAB_BG, borderwidth=0, tabmargins=0)
         style.configure("App.TNotebook.Tab",
             background="#2b2b2b", foreground="white",
@@ -358,6 +359,27 @@ class ClaseObsidianApp(ctk.CTk):
             background=[("selected", "#1a4a7a"), ("active", "#2d5a8a")],
             foreground=[("selected", "white"), ("active", "white")],
         )
+        style.configure("Tab.TLabel",
+            background=_TAB_BG, foreground="white", font=("", 10))
+        style.configure("TabBold.TLabel",
+            background=_TAB_BG, foreground="white", font=("", 10, "bold"))
+        style.configure("Tab.TRadiobutton",
+            background=_TAB_BG, foreground="white", font=("", 10))
+        style.map("Tab.TRadiobutton",
+            background=[("active", _TAB_BG)], foreground=[("active", "white")])
+        style.configure("Tab.TButton",
+            background="#1f538d", foreground="white", borderwidth=0,
+            font=("", 10), padding=(8, 4))
+        style.map("Tab.TButton",
+            background=[("active", "#2d5a8a"), ("pressed", "#163d6b")])
+        style.configure("TabGray.TButton",
+            background="#4a4a4a", foreground="white", borderwidth=0,
+            font=("", 10), padding=(8, 4))
+        style.map("TabGray.TButton",
+            background=[("active", "#5a5a5a"), ("pressed", "#3a3a3a")])
+        style.configure("Tab.TEntry",
+            fieldbackground="#2b2b2b", foreground="white",
+            insertcolor="white", borderwidth=1)
 
         nb_container = tk.Frame(self, bg=_TAB_BG, height=310)
         nb_container.pack(fill="x", padx=20)
@@ -398,20 +420,18 @@ class ClaseObsidianApp(ctk.CTk):
         tab.grid_columnconfigure(0, weight=1)
         tab.grid_rowconfigure(1, weight=1)
 
-        toolbar = ctk.CTkFrame(tab, fg_color="transparent")
+        toolbar = tk.Frame(tab, bg="#1e1e1e")
         toolbar.grid(row=0, column=0, sticky="ew", padx=5, pady=(10, 6))
-        ctk.CTkButton(toolbar, text="+ Agregar", width=100, height=32,
-                      command=self._add_item).pack(side="left", padx=(0, 4))
-        ctk.CTkButton(toolbar, text="✏ Editar", width=90, height=32,
-                      command=self._edit_item).pack(side="left", padx=4)
-        ctk.CTkButton(toolbar, text="✕ Quitar", width=90, height=32,
-                      fg_color="gray30", hover_color="gray40",
-                      command=self._remove_item).pack(side="left", padx=4)
-        ctk.CTkButton(toolbar, text="↑ Aplicar a todos", width=140, height=32,
-                      fg_color="gray30", hover_color="gray40",
-                      command=self._apply_to_all).pack(side="left", padx=4)
+        ttk.Button(toolbar, text="+ Agregar", style="Tab.TButton",
+                   command=self._add_item).pack(side="left", padx=(0, 4))
+        ttk.Button(toolbar, text="✏ Editar", style="Tab.TButton",
+                   command=self._edit_item).pack(side="left", padx=4)
+        ttk.Button(toolbar, text="✕ Quitar", style="TabGray.TButton",
+                   command=self._remove_item).pack(side="left", padx=4)
+        ttk.Button(toolbar, text="↑ Aplicar a todos", style="TabGray.TButton",
+                   command=self._apply_to_all).pack(side="left", padx=4)
 
-        tree_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        tree_frame = tk.Frame(tab, bg="#1e1e1e")
         tree_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=(0, 5))
         tree_frame.grid_columnconfigure(0, weight=1)
         tree_frame.grid_rowconfigure(0, weight=1)
@@ -421,45 +441,47 @@ class ClaseObsidianApp(ctk.CTk):
     def _setup_opciones_tab(self, tab):
         tab.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(tab, text="🤖  Modelo Whisper",
-                     font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, sticky="w", padx=5, pady=(10, 4))
-        model_row = ctk.CTkFrame(tab, fg_color="transparent")
-        model_row.grid(row=1, column=0, sticky="w", padx=5, pady=(0, 12))
-        self.model_var = ctk.StringVar(value="large-v3")
+        ttk.Label(tab, text="Modelo Whisper",
+                  style="TabBold.TLabel").grid(row=0, column=0, sticky="w", padx=8, pady=(14, 4))
+        model_row = tk.Frame(tab, bg="#1e1e1e")
+        model_row.grid(row=1, column=0, sticky="w", padx=8, pady=(0, 12))
+        self.model_var = tk.StringVar(value="large-v3")
         for i, (lbl, val) in enumerate([("small  (~5 min)", "small"),
                                          ("medium  (~12 min)", "medium"),
                                          ("large-v3  (~20 min)", "large-v3")]):
-            ctk.CTkRadioButton(model_row, text=lbl, variable=self.model_var,
-                               value=val).grid(row=0, column=i, padx=10)
+            ttk.Radiobutton(model_row, text=lbl, variable=self.model_var,
+                            value=val, style="Tab.TRadiobutton").grid(row=0, column=i, padx=10)
 
-        ctk.CTkLabel(tab, text="📄  Formato del documento",
-                     font=ctk.CTkFont(weight="bold")).grid(row=2, column=0, sticky="w", padx=5, pady=(4, 4))
-        fmt_row = ctk.CTkFrame(tab, fg_color="transparent")
-        fmt_row.grid(row=3, column=0, sticky="w", padx=5, pady=(0, 12))
-        self.format_var = ctk.StringVar(value="md")
-        ctk.CTkRadioButton(fmt_row, text="Markdown (.md)", variable=self.format_var,
-                           value="md").grid(row=0, column=0, padx=(0, 20))
-        ctk.CTkRadioButton(fmt_row, text="PDF (.pdf)", variable=self.format_var,
-                           value="pdf").grid(row=0, column=1)
+        ttk.Label(tab, text="Formato del documento",
+                  style="TabBold.TLabel").grid(row=2, column=0, sticky="w", padx=8, pady=(4, 4))
+        fmt_row = tk.Frame(tab, bg="#1e1e1e")
+        fmt_row.grid(row=3, column=0, sticky="w", padx=8, pady=(0, 12))
+        self.format_var = tk.StringVar(value="md")
+        ttk.Radiobutton(fmt_row, text="Markdown (.md)", variable=self.format_var,
+                        value="md", style="Tab.TRadiobutton").grid(row=0, column=0, padx=(0, 20))
+        ttk.Radiobutton(fmt_row, text="PDF (.pdf)", variable=self.format_var,
+                        value="pdf", style="Tab.TRadiobutton").grid(row=0, column=1)
 
-        ctk.CTkLabel(tab, text="💾  Destino del documento",
-                     font=ctk.CTkFont(weight="bold")).grid(row=4, column=0, sticky="w", padx=5, pady=(4, 4))
-        dest_row = ctk.CTkFrame(tab, fg_color="transparent")
-        dest_row.grid(row=5, column=0, sticky="w", padx=5, pady=(0, 8))
-        self.dest_var = ctk.StringVar(value="obsidian")
-        ctk.CTkRadioButton(dest_row, text="Vault de Obsidian", variable=self.dest_var,
-                           value="obsidian", command=self._toggle_dest).grid(row=0, column=0, padx=(0, 20))
-        ctk.CTkRadioButton(dest_row, text="Guardar como archivo...", variable=self.dest_var,
-                           value="file", command=self._toggle_dest).grid(row=0, column=1)
+        ttk.Label(tab, text="Destino del documento",
+                  style="TabBold.TLabel").grid(row=4, column=0, sticky="w", padx=8, pady=(4, 4))
+        dest_row = tk.Frame(tab, bg="#1e1e1e")
+        dest_row.grid(row=5, column=0, sticky="w", padx=8, pady=(0, 8))
+        self.dest_var = tk.StringVar(value="obsidian")
+        ttk.Radiobutton(dest_row, text="Vault de Obsidian", variable=self.dest_var,
+                        value="obsidian", style="Tab.TRadiobutton",
+                        command=self._toggle_dest).grid(row=0, column=0, padx=(0, 20))
+        ttk.Radiobutton(dest_row, text="Guardar como archivo...", variable=self.dest_var,
+                        value="file", style="Tab.TRadiobutton",
+                        command=self._toggle_dest).grid(row=0, column=1)
 
-        self.vault_frame = ctk.CTkFrame(tab, fg_color="transparent")
-        self.vault_frame.grid(row=6, column=0, sticky="ew", padx=5, pady=(0, 10))
+        self.vault_frame = tk.Frame(tab, bg="#1e1e1e")
+        self.vault_frame.grid(row=6, column=0, sticky="ew", padx=8, pady=(0, 10))
         self.vault_frame.grid_columnconfigure(0, weight=1)
-        self.vault_entry = ctk.CTkEntry(self.vault_frame, height=36)
+        self.vault_entry = ttk.Entry(self.vault_frame, style="Tab.TEntry")
         self.vault_entry.insert(0, os.getenv("OBSIDIAN_VAULT", r"C:\Users\vicen\Desktop\claude\Claude"))
         self.vault_entry.grid(row=0, column=0, sticky="ew")
-        ctk.CTkButton(self.vault_frame, text="Cambiar", width=90,
-                      command=self._select_vault).grid(row=0, column=1, padx=(8, 0))
+        ttk.Button(self.vault_frame, text="Cambiar", style="Tab.TButton",
+                   command=self._select_vault).grid(row=0, column=1, padx=(8, 0))
 
     # ── helpers ──────────────────────────────────────────────────────────────
 
