@@ -159,7 +159,7 @@ class EditQueueItemDialog(ctk.CTkToplevel):
     def __init__(self, parent, item: QueueItem = None, vault_folders: list = None):
         super().__init__(parent)
         self.title("Configurar elemento")
-        self.geometry("520x480")
+        self.geometry("520x560")
         self.resizable(False, False)
         self.grab_set()
         self.result: QueueItem | None = None
