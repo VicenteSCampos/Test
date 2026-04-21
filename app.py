@@ -2,7 +2,7 @@ import logging
 import os
 import re
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from tkinter import filedialog, messagebox
 
@@ -26,7 +26,7 @@ ctk.set_default_color_theme("blue")
 
 @dataclass
 class QueueItem:
-    audio_path: str
+    audio_paths: list = field(default_factory=list)
     asignatura: str = ""
     fecha: str = ""
     pptx_path: str = ""
@@ -159,11 +159,11 @@ class EditQueueItemDialog(ctk.CTkToplevel):
     def __init__(self, parent, item: QueueItem = None, vault_folders: list = None):
         super().__init__(parent)
         self.title("Configurar elemento")
-        self.geometry("500x360")
+        self.geometry("520x480")
         self.resizable(False, False)
         self.grab_set()
         self.result: QueueItem | None = None
-        self._audio_path = item.audio_path if item else ""
+        self._audio_paths: list[str] = list(item.audio_paths) if item else []
         self._pptx_path = item.pptx_path if item else ""
         self._vault_folders = vault_folders or []
         self._setup_ui(item)
@@ -171,21 +171,19 @@ class EditQueueItemDialog(ctk.CTkToplevel):
     def _setup_ui(self, item: QueueItem = None):
         pad = {"padx": 20, "pady": (8, 2)}
 
-        # Audio
-        ctk.CTkLabel(self, text="Archivo de Audio",
-                     font=ctk.CTkFont(weight="bold"), anchor="w").pack(fill="x", **pad)
-        audio_row = ctk.CTkFrame(self, fg_color="transparent")
-        audio_row.pack(fill="x", padx=20, pady=(0, 10))
-        audio_row.grid_columnconfigure(0, weight=1)
-        self._audio_label = ctk.CTkLabel(
-            audio_row,
-            text=os.path.basename(self._audio_path) if self._audio_path else "Ningún archivo seleccionado",
-            text_color="white" if self._audio_path else "gray",
-            anchor="w",
-        )
-        self._audio_label.grid(row=0, column=0, sticky="ew")
-        ctk.CTkButton(audio_row, text="Seleccionar", width=110,
-                      command=self._select_audio).grid(row=0, column=1, padx=(8, 0))
+        # Audio section
+        audio_header = ctk.CTkFrame(self, fg_color="transparent")
+        audio_header.pack(fill="x", **pad)
+        ctk.CTkLabel(audio_header, text="Archivos de Audio",
+                     font=ctk.CTkFont(weight="bold"), anchor="w").pack(side="left")
+        ctk.CTkButton(audio_header, text="+ Agregar audio", width=120, height=28,
+                      command=self._add_audio).pack(side="right")
+
+        # Scrollable list of audio files
+        self._audio_list_frame = ctk.CTkScrollableFrame(self, height=140, fg_color="#1e1e1e")
+        self._audio_list_frame.pack(fill="x", padx=20, pady=(4, 10))
+        self._audio_list_frame.grid_columnconfigure(0, weight=1)
+        self._render_audio_list()
 
         # PPT
         ctk.CTkLabel(self, text="PowerPoint (opcional)",
@@ -226,17 +224,61 @@ class EditQueueItemDialog(ctk.CTkToplevel):
         btn_row.pack(fill="x", padx=20, pady=(0, 16))
         ctk.CTkButton(btn_row, text="Cancelar", fg_color="gray30", hover_color="gray40",
                       command=self.destroy).pack(side="right", padx=(8, 0))
-        ctk.CTkButton(btn_row, text="Aceptar",
-                      command=self._accept).pack(side="right")
+        ctk.CTkButton(btn_row, text="Aceptar", command=self._accept).pack(side="right")
 
-    def _select_audio(self):
-        path = filedialog.askopenfilename(
-            title="Seleccionar archivo de audio",
+    def _render_audio_list(self):
+        for w in self._audio_list_frame.winfo_children():
+            w.destroy()
+
+        if not self._audio_paths:
+            ctk.CTkLabel(self._audio_list_frame, text="Sin archivos — pulsa '+ Agregar audio'",
+                         text_color="gray").grid(row=0, column=0, pady=10)
+            return
+
+        for i, path in enumerate(self._audio_paths):
+            row_frame = ctk.CTkFrame(self._audio_list_frame, fg_color="transparent")
+            row_frame.grid(row=i, column=0, sticky="ew", pady=2)
+            row_frame.grid_columnconfigure(2, weight=1)
+
+            ctk.CTkButton(row_frame, text="↑", width=26, height=26,
+                          fg_color="gray30", hover_color="gray40",
+                          command=lambda idx=i: self._move_audio(idx, -1)).grid(row=0, column=0, padx=(0, 2))
+            ctk.CTkButton(row_frame, text="↓", width=26, height=26,
+                          fg_color="gray30", hover_color="gray40",
+                          command=lambda idx=i: self._move_audio(idx, 1)).grid(row=0, column=1, padx=(0, 6))
+
+            name = os.path.basename(path)
+            if len(name) > 36:
+                name = name[:33] + "..."
+            ctk.CTkLabel(row_frame, text=f"{i + 1}. {name}", anchor="w",
+                         text_color="white").grid(row=0, column=2, sticky="ew", padx=(0, 6))
+
+            ctk.CTkButton(row_frame, text="✕", width=26, height=26,
+                          fg_color="#7a1a1a", hover_color="#a02020",
+                          command=lambda idx=i: self._remove_audio(idx)).grid(row=0, column=3)
+
+        self._audio_list_frame.grid_columnconfigure(0, weight=1)
+
+    def _add_audio(self):
+        paths = filedialog.askopenfilenames(
+            title="Seleccionar archivos de audio",
             filetypes=[("Audio", "*.mp3 *.wav *.m4a *.ogg *.flac *.mp4 *.mkv")],
         )
-        if path:
-            self._audio_path = path
-            self._audio_label.configure(text=os.path.basename(path), text_color="white")
+        for p in paths:
+            if p not in self._audio_paths:
+                self._audio_paths.append(p)
+        self._render_audio_list()
+
+    def _remove_audio(self, idx: int):
+        self._audio_paths.pop(idx)
+        self._render_audio_list()
+
+    def _move_audio(self, idx: int, direction: int):
+        new_idx = idx + direction
+        if 0 <= new_idx < len(self._audio_paths):
+            self._audio_paths[idx], self._audio_paths[new_idx] = \
+                self._audio_paths[new_idx], self._audio_paths[idx]
+            self._render_audio_list()
 
     def _select_pptx(self):
         path = filedialog.askopenfilename(
@@ -252,14 +294,14 @@ class EditQueueItemDialog(ctk.CTkToplevel):
         self._pptx_label.configure(text="Ningún archivo seleccionado", text_color="gray")
 
     def _accept(self):
-        if not self._audio_path:
-            messagebox.showerror("Error", "Selecciona un archivo de audio.", parent=self)
+        if not self._audio_paths:
+            messagebox.showerror("Error", "Agrega al menos un archivo de audio.", parent=self)
             return
         if not self._asig_combo.get().strip():
             messagebox.showerror("Error", "Ingresa o selecciona la asignatura.", parent=self)
             return
         self.result = QueueItem(
-            audio_path=self._audio_path,
+            audio_paths=list(self._audio_paths),
             asignatura=self._asig_combo.get().strip(),
             fecha=self._fecha_entry.get().strip(),
             pptx_path=self._pptx_path,
@@ -319,7 +361,6 @@ class ClaseObsidianApp(ctk.CTk):
         tab.grid_columnconfigure(0, weight=1)
         tab.grid_rowconfigure(1, weight=1)
 
-        # Toolbar
         toolbar = ctk.CTkFrame(tab, fg_color="transparent")
         toolbar.grid(row=0, column=0, sticky="ew", padx=5, pady=(10, 6))
         ctk.CTkButton(toolbar, text="+ Agregar", width=100, height=32,
@@ -333,7 +374,6 @@ class ClaseObsidianApp(ctk.CTk):
                       fg_color="gray30", hover_color="gray40",
                       command=self._apply_to_all).pack(side="left", padx=4)
 
-        # Table container
         self._table_frame = ctk.CTkFrame(tab, fg_color="transparent")
         self._table_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=(0, 5))
 
@@ -343,7 +383,6 @@ class ClaseObsidianApp(ctk.CTk):
         tab = self.tabs.tab("  Opciones  ")
         tab.grid_columnconfigure(0, weight=1)
 
-        # Modelo
         ctk.CTkLabel(tab, text="🤖  Modelo Whisper",
                      font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, sticky="w", padx=5, pady=(10, 4))
         model_row = ctk.CTkFrame(tab, fg_color="transparent")
@@ -355,7 +394,6 @@ class ClaseObsidianApp(ctk.CTk):
             ctk.CTkRadioButton(model_row, text=lbl, variable=self.model_var,
                                value=val).grid(row=0, column=i, padx=10)
 
-        # Formato
         ctk.CTkLabel(tab, text="📄  Formato del documento",
                      font=ctk.CTkFont(weight="bold")).grid(row=2, column=0, sticky="w", padx=5, pady=(4, 4))
         fmt_row = ctk.CTkFrame(tab, fg_color="transparent")
@@ -366,7 +404,6 @@ class ClaseObsidianApp(ctk.CTk):
         ctk.CTkRadioButton(fmt_row, text="PDF (.pdf)", variable=self.format_var,
                            value="pdf").grid(row=0, column=1)
 
-        # Destino
         ctk.CTkLabel(tab, text="💾  Destino del documento",
                      font=ctk.CTkFont(weight="bold")).grid(row=4, column=0, sticky="w", padx=5, pady=(4, 4))
         dest_row = ctk.CTkFrame(tab, fg_color="transparent")
@@ -377,7 +414,6 @@ class ClaseObsidianApp(ctk.CTk):
         ctk.CTkRadioButton(dest_row, text="Guardar como archivo...", variable=self.dest_var,
                            value="file", command=self._toggle_dest).grid(row=0, column=1)
 
-        # Vault path
         self.vault_frame = ctk.CTkFrame(tab, fg_color="transparent")
         self.vault_frame.grid(row=6, column=0, sticky="ew", padx=5, pady=(0, 10))
         self.vault_frame.grid_columnconfigure(0, weight=1)
@@ -410,23 +446,30 @@ class ClaseObsidianApp(ctk.CTk):
 
     # ── queue table ──────────────────────────────────────────────────────────
 
+    def _audio_display(self, item: QueueItem) -> str:
+        if not item.audio_paths:
+            return "—"
+        name = os.path.basename(item.audio_paths[0])
+        if len(name) > 20:
+            name = name[:17] + "..."
+        if len(item.audio_paths) > 1:
+            name += f" (+{len(item.audio_paths) - 1})"
+        return name
+
     def _refresh_table(self):
         for w in self._table_frame.winfo_children():
             w.destroy()
         self._ctk_table = None
 
-        header = ["#", "Archivo", "Asignatura", "Fecha", "PPT", "Estado"]
+        header = ["#", "Archivos", "Asignatura", "Fecha", "PPT", "Estado"]
         rows = [header]
         for i, item in enumerate(self.queue):
-            audio_name = os.path.basename(item.audio_path)
-            if len(audio_name) > 22:
-                audio_name = audio_name[:19] + "..."
             asig = item.asignatura
-            if len(asig) > 18:
-                asig = asig[:15] + "..."
+            if len(asig) > 16:
+                asig = asig[:13] + "..."
             rows.append([
                 str(i + 1),
-                audio_name or "—",
+                self._audio_display(item),
                 asig or "—",
                 item.fecha or "—",
                 "✓" if item.pptx_path else "—",
@@ -536,8 +579,12 @@ class ClaseObsidianApp(ctk.CTk):
                 self.after(0, self._refresh_table)
 
                 try:
-                    self._log(f"\n[{step + 1}/{total}] 🎵 {os.path.basename(item.audio_path)}")
-                    transcription = self._transcribe(item.audio_path)
+                    n = len(item.audio_paths)
+                    label = os.path.basename(item.audio_paths[0]) if n == 1 \
+                            else f"{n} archivos"
+                    self._log(f"\n[{step + 1}/{total}] 🎵 {label}")
+
+                    transcription = self._transcribe(item.audio_paths)
 
                     pptx_text = ""
                     if item.pptx_path:
@@ -561,7 +608,7 @@ class ClaseObsidianApp(ctk.CTk):
                     self._set_progress((step + 1) / total, f"[{step + 1}/{total}] Completado")
 
                 except Exception as e:
-                    logging.exception(f"Error procesando {item.audio_path}")
+                    logging.exception(f"Error procesando item {idx}")
                     self._log(f"❌ Error: {type(e).__name__}: {e}")
                     item.estado = "error"
 
@@ -572,7 +619,7 @@ class ClaseObsidianApp(ctk.CTk):
             self.after(0, lambda: self.process_btn.configure(
                 state="normal", text="🚀  Procesar Cola"))
 
-    def _transcribe(self, audio_path: str) -> str:
+    def _transcribe(self, audio_paths: list[str]) -> str:
         from faster_whisper import WhisperModel
 
         if self._whisper_model is None:
@@ -581,23 +628,31 @@ class ClaseObsidianApp(ctk.CTk):
             self._whisper_model = WhisperModel(self.model_var.get(), device="cuda", compute_type="int8")
 
         model = self._whisper_model
-        self._log(f"🎙️ Transcribiendo con {self.model_var.get()}...")
-        self._set_progress(0.1, "Transcribiendo audio...")
-        segments, info = model.transcribe(audio_path, language="es", beam_size=5)
+        all_parts = []
 
-        parts = []
-        for seg in segments:
-            parts.append(seg.text.strip())
-            if info.duration > 0:
-                pct = 0.1 + (seg.end / info.duration) * 0.5
-                self._set_progress(
-                    min(pct, 0.6),
-                    f"Transcribiendo... {int(seg.end/60)}:{int(seg.end%60):02d} / "
-                    f"{int(info.duration/60)}:{int(info.duration%60):02d}"
-                )
+        for file_idx, audio_path in enumerate(audio_paths):
+            prefix = f"[{file_idx + 1}/{len(audio_paths)}] " if len(audio_paths) > 1 else ""
+            self._log(f"🎙️ {prefix}Transcribiendo {os.path.basename(audio_path)}...")
+            self._set_progress(0.1, f"{prefix}Transcribiendo audio...")
 
-        transcription = " ".join(parts)
-        self._log(f"✅ Transcripción completa — {len(transcription.split())} palabras")
+            segments, info = model.transcribe(audio_path, language="es", beam_size=5)
+            parts = []
+            for seg in segments:
+                parts.append(seg.text.strip())
+                if info.duration > 0:
+                    file_progress = file_idx / len(audio_paths)
+                    seg_progress = (seg.end / info.duration) / len(audio_paths)
+                    pct = 0.1 + (file_progress + seg_progress) * 0.5
+                    self._set_progress(
+                        min(pct, 0.6),
+                        f"{prefix}Transcribiendo... {int(seg.end/60)}:{int(seg.end%60):02d} / "
+                        f"{int(info.duration/60)}:{int(info.duration%60):02d}"
+                    )
+            all_parts.extend(parts)
+            self._log(f"✅ {prefix}Listo — {len(parts)} segmentos")
+
+        transcription = " ".join(all_parts)
+        self._log(f"✅ Transcripción total — {len(transcription.split())} palabras")
         self._set_progress(0.65, "Procesando con Claude AI...")
         return transcription
 
