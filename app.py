@@ -4,6 +4,7 @@ import re
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime
+import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter import filedialog, messagebox
 
@@ -347,7 +348,8 @@ class ClaseObsidianApp(ctk.CTk):
 
         style = ttk.Style()
         style.theme_use("clam")
-        style.configure("App.TNotebook", background="#1a1a1a", borderwidth=0, tabmargins=0)
+        _TAB_BG = "#1e1e1e"
+        style.configure("App.TNotebook", background=_TAB_BG, borderwidth=0, tabmargins=0)
         style.configure("App.TNotebook.Tab",
             background="#2b2b2b", foreground="white",
             padding=(16, 6), font=("", 10), borderwidth=0,
@@ -357,15 +359,15 @@ class ClaseObsidianApp(ctk.CTk):
             foreground=[("selected", "white"), ("active", "white")],
         )
 
-        nb_container = ctk.CTkFrame(self, fg_color="#1a1a1a", height=310)
+        nb_container = tk.Frame(self, bg=_TAB_BG, height=310)
         nb_container.pack(fill="x", padx=20)
         nb_container.pack_propagate(False)
 
         self.tabs = ttk.Notebook(nb_container, style="App.TNotebook")
         self.tabs.pack(fill="both", expand=True)
 
-        tab_principal = ctk.CTkFrame(self.tabs, fg_color="#1e1e1e")
-        tab_opciones = ctk.CTkFrame(self.tabs, fg_color="#1e1e1e")
+        tab_principal = tk.Frame(self.tabs, bg=_TAB_BG)
+        tab_opciones = tk.Frame(self.tabs, bg=_TAB_BG)
         self.tabs.add(tab_principal, text="  Principal  ")
         self.tabs.add(tab_opciones, text="  Opciones  ")
 
