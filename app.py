@@ -345,13 +345,32 @@ class ClaseObsidianApp(ctk.CTk):
         ctk.CTkLabel(self, text="Transcripción automática de clases universitarias",
                      text_color="gray").pack(pady=(0, 10))
 
-        self.tabs = ctk.CTkTabview(self, height=300)
-        self.tabs.pack(fill="x", padx=20)
-        self.tabs.add("  Principal  ")
-        self.tabs.add("  Opciones  ")
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure("App.TNotebook", background="#1a1a1a", borderwidth=0, tabmargins=0)
+        style.configure("App.TNotebook.Tab",
+            background="#2b2b2b", foreground="white",
+            padding=(16, 6), font=("", 10), borderwidth=0,
+        )
+        style.map("App.TNotebook.Tab",
+            background=[("selected", "#1a4a7a"), ("active", "#2d5a8a")],
+            foreground=[("selected", "white"), ("active", "white")],
+        )
 
-        self._setup_principal_tab()
-        self._setup_opciones_tab()
+        nb_container = ctk.CTkFrame(self, fg_color="#1a1a1a", height=310)
+        nb_container.pack(fill="x", padx=20)
+        nb_container.pack_propagate(False)
+
+        self.tabs = ttk.Notebook(nb_container, style="App.TNotebook")
+        self.tabs.pack(fill="both", expand=True)
+
+        tab_principal = ctk.CTkFrame(self.tabs, fg_color="#1e1e1e")
+        tab_opciones = ctk.CTkFrame(self.tabs, fg_color="#1e1e1e")
+        self.tabs.add(tab_principal, text="  Principal  ")
+        self.tabs.add(tab_opciones, text="  Opciones  ")
+
+        self._setup_principal_tab(tab_principal)
+        self._setup_opciones_tab(tab_opciones)
 
         self.process_btn = ctk.CTkButton(
             self, text="🚀  Procesar Cola",
@@ -373,8 +392,7 @@ class ClaseObsidianApp(ctk.CTk):
         self.log_box = ctk.CTkTextbox(self, height=145, font=ctk.CTkFont(size=11))
         self.log_box.pack(fill="both", expand=True, padx=20, pady=(0, 15))
 
-    def _setup_principal_tab(self):
-        tab = self.tabs.tab("  Principal  ")
+    def _setup_principal_tab(self, tab):
         tab.grid_columnconfigure(0, weight=1)
         tab.grid_rowconfigure(1, weight=1)
 
@@ -398,8 +416,7 @@ class ClaseObsidianApp(ctk.CTk):
 
         self._build_treeview(tree_frame)
 
-    def _setup_opciones_tab(self):
-        tab = self.tabs.tab("  Opciones  ")
+    def _setup_opciones_tab(self, tab):
         tab.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(tab, text="🤖  Modelo Whisper",
