@@ -1,6 +1,6 @@
 faster-whisper
 anthropic
-customtkinter
+PyQt6
 python-dotenv
 fpdf2
 python-pptx
