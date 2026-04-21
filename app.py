@@ -4,11 +4,11 @@ import re
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime
+import tkinter.ttk as ttk
 from tkinter import filedialog, messagebox
 
 import anthropic
 import customtkinter as ctk
-from CTkTable import CTkTable
 from dotenv import load_dotenv
 
 _base = os.path.dirname(os.path.abspath(__file__))
@@ -330,7 +330,6 @@ class ClaseObsidianApp(ctk.CTk):
         self._selected_row: int | None = None
         self._save_folder: str | None = None
         self._whisper_model = None
-        self._ctk_table = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -385,10 +384,12 @@ class ClaseObsidianApp(ctk.CTk):
                       fg_color="gray30", hover_color="gray40",
                       command=self._apply_to_all).pack(side="left", padx=4)
 
-        self._table_frame = ctk.CTkFrame(tab, fg_color="transparent")
-        self._table_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=(0, 5))
+        tree_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        tree_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=(0, 5))
+        tree_frame.grid_columnconfigure(0, weight=1)
+        tree_frame.grid_rowconfigure(0, weight=1)
 
-        self._refresh_table()
+        self._build_treeview(tree_frame)
 
     def _setup_opciones_tab(self):
         tab = self.tabs.tab("  Opciones  ")
@@ -467,44 +468,66 @@ class ClaseObsidianApp(ctk.CTk):
             name += f" (+{len(item.audio_paths) - 1})"
         return name
 
-    def _refresh_table(self):
-        for w in self._table_frame.winfo_children():
-            w.destroy()
-        self._ctk_table = None
+    def _build_treeview(self, parent):
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure("Queue.Treeview",
+            background="#2b2b2b", foreground="white",
+            fieldbackground="#2b2b2b", rowheight=28, borderwidth=0,
+            font=("", 10),
+        )
+        style.configure("Queue.Treeview.Heading",
+            background="#1a4a7a", foreground="white",
+            font=("", 10, "bold"), relief="flat",
+        )
+        style.map("Queue.Treeview",
+            background=[("selected", "#1a5276")],
+            foreground=[("selected", "white")],
+        )
 
-        header = ["#", "Archivos", "Asignatura", "Fecha", "PPT", "Estado"]
-        rows = [header]
+        cols = ("#", "Archivos", "Asignatura", "Fecha", "PPT", "Estado")
+        self._tree = ttk.Treeview(parent, columns=cols, show="headings",
+                                   style="Queue.Treeview", selectmode="browse")
+
+        col_widths = {"#": 30, "Archivos": 155, "Asignatura": 135, "Fecha": 88, "PPT": 38, "Estado": 82}
+        for col in cols:
+            self._tree.heading(col, text=col)
+            self._tree.column(col, width=col_widths[col], minwidth=col_widths[col], anchor="w")
+
+        sb = ttk.Scrollbar(parent, orient="vertical", command=self._tree.yview)
+        self._tree.configure(yscrollcommand=sb.set)
+        self._tree.grid(row=0, column=0, sticky="nsew")
+        sb.grid(row=0, column=1, sticky="ns")
+
+        self._tree.tag_configure("pendiente", foreground="white")
+        self._tree.tag_configure("procesando", foreground="#f6e05e")
+        self._tree.tag_configure("listo", foreground="#68d391")
+        self._tree.tag_configure("error", foreground="#fc8181")
+
+        self._tree.bind("<<TreeviewSelect>>", self._on_row_select)
+
+    def _refresh_table(self):
+        self._tree.delete(*self._tree.get_children())
         for i, item in enumerate(self.queue):
             asig = item.asignatura
-            if len(asig) > 16:
-                asig = asig[:13] + "..."
-            rows.append([
+            if len(asig) > 18:
+                asig = asig[:15] + "..."
+            self._tree.insert("", "end", iid=str(i), tags=(item.estado,), values=(
                 str(i + 1),
                 self._audio_display(item),
                 asig or "—",
                 item.fecha or "—",
                 "✓" if item.pptx_path else "—",
                 item.estado,
-            ])
-
-        self._ctk_table = CTkTable(
-            self._table_frame,
-            values=rows,
-            command=self._on_row_click,
-            hover=True,
-            header_color="#1a4a7a",
-            colors=["#2d2d2d", "#252525"],
-        )
-        self._ctk_table.pack(fill="both", expand=True)
-
+            ))
         if self._selected_row is not None and self._selected_row < len(self.queue):
-            self._ctk_table.edit_row(self._selected_row + 1, text_color="#63b3ed")
+            self._tree.selection_set(str(self._selected_row))
+            self._tree.focus(str(self._selected_row))
 
-    def _on_row_click(self, cell):
-        if cell["row"] == 0:
-            return
-        self._selected_row = cell["row"] - 1
-        self._refresh_table()
+    def _on_row_select(self, _event):
+        sel = self._tree.selection()
+        if sel:
+            self._selected_row = int(sel[0])
 
     def _add_item(self):
         vault = self.vault_entry.get().strip() if hasattr(self, "vault_entry") else \
