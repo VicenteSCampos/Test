@@ -2,11 +2,13 @@ import logging
 import os
 import re
 import threading
+from dataclasses import dataclass
 from datetime import datetime
 from tkinter import filedialog, messagebox
 
 import anthropic
 import customtkinter as ctk
+from CTkTable import CTkTable
 from dotenv import load_dotenv
 
 _base = os.path.dirname(os.path.abspath(__file__))
@@ -20,6 +22,15 @@ logging.basicConfig(
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
+
+
+@dataclass
+class QueueItem:
+    audio_path: str
+    asignatura: str = ""
+    fecha: str = ""
+    pptx_path: str = ""
+    estado: str = "pendiente"  # pendiente / procesando / listo / error
 
 
 def extract_pptx(filepath: str) -> str:
@@ -53,7 +64,7 @@ def _strip_emoji(text: str) -> str:
 
 
 def _pdf_safe(text: str) -> str:
-    return text.replace("\u00a0", " ")  # solo reemplaza espacio no-rompible
+    return text.replace("\u00a0", " ")
 
 
 def save_pdf(content: str, filepath: str):
@@ -75,7 +86,6 @@ def save_pdf(content: str, filepath: str):
     pdf.add_font("Arial", style="I", fname="C:\\Windows\\Fonts\\ariali.ttf")
 
     lines = content.split("\n")
-    # Skip YAML frontmatter
     start, in_front = 0, False
     for i, line in enumerate(lines):
         if i == 0 and line.strip() == "---":
@@ -86,7 +96,7 @@ def save_pdf(content: str, filepath: str):
             break
 
     lm = pdf.l_margin
-    pw = pdf.w - pdf.l_margin - pdf.r_margin  # usable width
+    pw = pdf.w - pdf.l_margin - pdf.r_margin
 
     in_mermaid = False
     for line in lines[start:]:
@@ -138,7 +148,6 @@ def save_pdf(content: str, filepath: str):
             pdf.line(lm, pdf.get_y(), lm + pw, pdf.get_y())
             pdf.ln(2)
         else:
-            # Strip bold markers for PDF simplicity
             clean = re.sub(r"\*\*(.*?)\*\*", r"\1", s)
             pdf.set_font("Arial", "", 10)
             pdf.multi_cell(pw, 6, clean)
@@ -146,16 +155,129 @@ def save_pdf(content: str, filepath: str):
     pdf.output(filepath)
 
 
+class EditQueueItemDialog(ctk.CTkToplevel):
+    def __init__(self, parent, item: QueueItem = None, vault_folders: list = None):
+        super().__init__(parent)
+        self.title("Configurar elemento")
+        self.geometry("500x360")
+        self.resizable(False, False)
+        self.grab_set()
+        self.result: QueueItem | None = None
+        self._audio_path = item.audio_path if item else ""
+        self._pptx_path = item.pptx_path if item else ""
+        self._vault_folders = vault_folders or []
+        self._setup_ui(item)
+
+    def _setup_ui(self, item: QueueItem = None):
+        pad = {"padx": 20, "pady": (8, 2)}
+
+        # Audio
+        ctk.CTkLabel(self, text="Archivo de Audio",
+                     font=ctk.CTkFont(weight="bold"), anchor="w").pack(fill="x", **pad)
+        audio_row = ctk.CTkFrame(self, fg_color="transparent")
+        audio_row.pack(fill="x", padx=20, pady=(0, 10))
+        audio_row.grid_columnconfigure(0, weight=1)
+        self._audio_label = ctk.CTkLabel(
+            audio_row,
+            text=os.path.basename(self._audio_path) if self._audio_path else "Ningún archivo seleccionado",
+            text_color="white" if self._audio_path else "gray",
+            anchor="w",
+        )
+        self._audio_label.grid(row=0, column=0, sticky="ew")
+        ctk.CTkButton(audio_row, text="Seleccionar", width=110,
+                      command=self._select_audio).grid(row=0, column=1, padx=(8, 0))
+
+        # PPT
+        ctk.CTkLabel(self, text="PowerPoint (opcional)",
+                     font=ctk.CTkFont(weight="bold"), anchor="w").pack(fill="x", **pad)
+        ppt_row = ctk.CTkFrame(self, fg_color="transparent")
+        ppt_row.pack(fill="x", padx=20, pady=(0, 10))
+        ppt_row.grid_columnconfigure(0, weight=1)
+        self._pptx_label = ctk.CTkLabel(
+            ppt_row,
+            text=os.path.basename(self._pptx_path) if self._pptx_path else "Ningún archivo seleccionado",
+            text_color="white" if self._pptx_path else "gray",
+            anchor="w",
+        )
+        self._pptx_label.grid(row=0, column=0, sticky="ew")
+        btn_frame = ctk.CTkFrame(ppt_row, fg_color="transparent")
+        btn_frame.grid(row=0, column=1, padx=(8, 0))
+        ctk.CTkButton(btn_frame, text="Seleccionar", width=100,
+                      command=self._select_pptx).grid(row=0, column=0, padx=(0, 4))
+        ctk.CTkButton(btn_frame, text="✕", width=30, fg_color="gray30",
+                      command=self._clear_pptx).grid(row=0, column=1)
+
+        # Asignatura
+        ctk.CTkLabel(self, text="Asignatura",
+                     font=ctk.CTkFont(weight="bold"), anchor="w").pack(fill="x", **pad)
+        self._asig_combo = ctk.CTkComboBox(self, values=self._vault_folders, height=36)
+        self._asig_combo.set(item.asignatura if item else "")
+        self._asig_combo.pack(fill="x", padx=20, pady=(0, 10))
+
+        # Fecha
+        ctk.CTkLabel(self, text="Fecha",
+                     font=ctk.CTkFont(weight="bold"), anchor="w").pack(fill="x", **pad)
+        self._fecha_entry = ctk.CTkEntry(self, height=36)
+        self._fecha_entry.insert(0, item.fecha if item else datetime.now().strftime("%Y-%m-%d"))
+        self._fecha_entry.pack(fill="x", padx=20, pady=(0, 14))
+
+        # Buttons
+        btn_row = ctk.CTkFrame(self, fg_color="transparent")
+        btn_row.pack(fill="x", padx=20, pady=(0, 16))
+        ctk.CTkButton(btn_row, text="Cancelar", fg_color="gray30", hover_color="gray40",
+                      command=self.destroy).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(btn_row, text="Aceptar",
+                      command=self._accept).pack(side="right")
+
+    def _select_audio(self):
+        path = filedialog.askopenfilename(
+            title="Seleccionar archivo de audio",
+            filetypes=[("Audio", "*.mp3 *.wav *.m4a *.ogg *.flac *.mp4 *.mkv")],
+        )
+        if path:
+            self._audio_path = path
+            self._audio_label.configure(text=os.path.basename(path), text_color="white")
+
+    def _select_pptx(self):
+        path = filedialog.askopenfilename(
+            title="Seleccionar PowerPoint",
+            filetypes=[("PowerPoint", "*.pptx *.ppt")],
+        )
+        if path:
+            self._pptx_path = path
+            self._pptx_label.configure(text=os.path.basename(path), text_color="white")
+
+    def _clear_pptx(self):
+        self._pptx_path = ""
+        self._pptx_label.configure(text="Ningún archivo seleccionado", text_color="gray")
+
+    def _accept(self):
+        if not self._audio_path:
+            messagebox.showerror("Error", "Selecciona un archivo de audio.", parent=self)
+            return
+        if not self._asig_combo.get().strip():
+            messagebox.showerror("Error", "Ingresa o selecciona la asignatura.", parent=self)
+            return
+        self.result = QueueItem(
+            audio_path=self._audio_path,
+            asignatura=self._asig_combo.get().strip(),
+            fecha=self._fecha_entry.get().strip(),
+            pptx_path=self._pptx_path,
+        )
+        self.destroy()
+
+
 class ClaseObsidianApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Clase → Obsidian")
-        self.geometry("660x740")
+        self.geometry("660x760")
         self.resizable(False, False)
-        self.audio_path = None
-        self.pptx_path = None
+        self.queue: list[QueueItem] = []
+        self._selected_row: int | None = None
+        self._save_folder: str | None = None
         self._whisper_model = None
-        self._save_path = None
+        self._ctk_table = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -164,7 +286,7 @@ class ClaseObsidianApp(ctk.CTk):
         ctk.CTkLabel(self, text="Transcripción automática de clases universitarias",
                      text_color="gray").pack(pady=(0, 10))
 
-        self.tabs = ctk.CTkTabview(self, height=390)
+        self.tabs = ctk.CTkTabview(self, height=300)
         self.tabs.pack(fill="x", padx=20)
         self.tabs.add("  Principal  ")
         self.tabs.add("  Opciones  ")
@@ -173,7 +295,7 @@ class ClaseObsidianApp(ctk.CTk):
         self._setup_opciones_tab()
 
         self.process_btn = ctk.CTkButton(
-            self, text="🚀  Procesar Clase",
+            self, text="🚀  Procesar Cola",
             command=self._start_processing,
             height=46, font=ctk.CTkFont(size=15, weight="bold"),
         )
@@ -195,53 +317,27 @@ class ClaseObsidianApp(ctk.CTk):
     def _setup_principal_tab(self):
         tab = self.tabs.tab("  Principal  ")
         tab.grid_columnconfigure(0, weight=1)
+        tab.grid_rowconfigure(1, weight=1)
 
-        # Audio
-        ctk.CTkLabel(tab, text="📁  Archivo de Audio",
-                     font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, sticky="w", padx=5, pady=(10, 4))
-        audio_row = ctk.CTkFrame(tab, fg_color="transparent")
-        audio_row.grid(row=1, column=0, sticky="ew", padx=5, pady=(0, 8))
-        audio_row.grid_columnconfigure(0, weight=1)
-        self.audio_label = ctk.CTkLabel(audio_row, text="Ningún archivo seleccionado",
-                                        text_color="gray", anchor="w")
-        self.audio_label.grid(row=0, column=0, sticky="ew")
-        ctk.CTkButton(audio_row, text="Seleccionar", width=110,
-                      command=self._select_audio).grid(row=0, column=1, padx=(8, 0))
+        # Toolbar
+        toolbar = ctk.CTkFrame(tab, fg_color="transparent")
+        toolbar.grid(row=0, column=0, sticky="ew", padx=5, pady=(10, 6))
+        ctk.CTkButton(toolbar, text="+ Agregar", width=100, height=32,
+                      command=self._add_item).pack(side="left", padx=(0, 4))
+        ctk.CTkButton(toolbar, text="✏ Editar", width=90, height=32,
+                      command=self._edit_item).pack(side="left", padx=4)
+        ctk.CTkButton(toolbar, text="✕ Quitar", width=90, height=32,
+                      fg_color="gray30", hover_color="gray40",
+                      command=self._remove_item).pack(side="left", padx=4)
+        ctk.CTkButton(toolbar, text="↑ Aplicar a todos", width=140, height=32,
+                      fg_color="gray30", hover_color="gray40",
+                      command=self._apply_to_all).pack(side="left", padx=4)
 
-        # PPT
-        ctk.CTkLabel(tab, text="📊  PowerPoint (opcional)",
-                     font=ctk.CTkFont(weight="bold")).grid(row=2, column=0, sticky="w", padx=5, pady=(4, 4))
-        ppt_row = ctk.CTkFrame(tab, fg_color="transparent")
-        ppt_row.grid(row=3, column=0, sticky="ew", padx=5, pady=(0, 8))
-        ppt_row.grid_columnconfigure(0, weight=1)
-        self.pptx_label = ctk.CTkLabel(ppt_row, text="Ningún archivo seleccionado",
-                                       text_color="gray", anchor="w")
-        self.pptx_label.grid(row=0, column=0, sticky="ew")
-        btn_ppt = ctk.CTkFrame(ppt_row, fg_color="transparent")
-        btn_ppt.grid(row=0, column=1, padx=(8, 0))
-        ctk.CTkButton(btn_ppt, text="Seleccionar", width=100,
-                      command=self._select_pptx).grid(row=0, column=0, padx=(0, 4))
-        ctk.CTkButton(btn_ppt, text="✕", width=30, fg_color="gray30",
-                      command=self._clear_pptx).grid(row=0, column=1)
+        # Table container
+        self._table_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        self._table_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=(0, 5))
 
-        # Asignatura
-        ctk.CTkLabel(tab, text="📋  Asignatura",
-                     font=ctk.CTkFont(weight="bold")).grid(row=4, column=0, sticky="w", padx=5, pady=(4, 4))
-        asig_row = ctk.CTkFrame(tab, fg_color="transparent")
-        asig_row.grid(row=5, column=0, sticky="ew", padx=5, pady=(0, 8))
-        asig_row.grid_columnconfigure(0, weight=1)
-        self.asignatura_combo = ctk.CTkComboBox(asig_row, values=[], height=36)
-        self.asignatura_combo.set("")
-        self.asignatura_combo.grid(row=0, column=0, sticky="ew")
-        ctk.CTkButton(asig_row, text="↺", width=36, height=36,
-                      command=self._refresh_folders).grid(row=0, column=1, padx=(6, 0))
-
-        # Fecha
-        ctk.CTkLabel(tab, text="📅  Fecha",
-                     font=ctk.CTkFont(weight="bold")).grid(row=6, column=0, sticky="w", padx=5, pady=(4, 4))
-        self.fecha_entry = ctk.CTkEntry(tab, height=36)
-        self.fecha_entry.insert(0, datetime.now().strftime("%Y-%m-%d"))
-        self.fecha_entry.grid(row=7, column=0, sticky="ew", padx=5, pady=(0, 10))
+        self._refresh_table()
 
     def _setup_opciones_tab(self):
         tab = self.tabs.tab("  Opciones  ")
@@ -291,16 +387,7 @@ class ClaseObsidianApp(ctk.CTk):
         ctk.CTkButton(self.vault_frame, text="Cambiar", width=90,
                       command=self._select_vault).grid(row=0, column=1, padx=(8, 0))
 
-        self._refresh_folders()
-
     # ── helpers ──────────────────────────────────────────────────────────────
-
-    def _refresh_folders(self):
-        vault = self.vault_entry.get().strip() if hasattr(self, "vault_entry") else \
-                os.getenv("OBSIDIAN_VAULT", "")
-        folders = scan_vault_folders(vault)
-        if hasattr(self, "asignatura_combo") and folders:
-            self.asignatura_combo.configure(values=folders)
 
     def _toggle_dest(self):
         if self.dest_var.get() == "obsidian":
@@ -313,29 +400,6 @@ class ClaseObsidianApp(ctk.CTk):
         if path:
             self.vault_entry.delete(0, "end")
             self.vault_entry.insert(0, path)
-            self._refresh_folders()
-
-    def _select_audio(self):
-        path = filedialog.askopenfilename(
-            title="Seleccionar archivo de audio",
-            filetypes=[("Audio", "*.mp3 *.wav *.m4a *.ogg *.flac *.mp4 *.mkv")]
-        )
-        if path:
-            self.audio_path = path
-            self.audio_label.configure(text=os.path.basename(path), text_color="white")
-
-    def _select_pptx(self):
-        path = filedialog.askopenfilename(
-            title="Seleccionar PowerPoint",
-            filetypes=[("PowerPoint", "*.pptx *.ppt")]
-        )
-        if path:
-            self.pptx_path = path
-            self.pptx_label.configure(text=os.path.basename(path), text_color="white")
-
-    def _clear_pptx(self):
-        self.pptx_path = None
-        self.pptx_label.configure(text="Ningún archivo seleccionado", text_color="gray")
 
     def _log(self, msg):
         self.after(0, lambda: (self.log_box.insert("end", f"{msg}\n"), self.log_box.see("end")))
@@ -344,80 +408,182 @@ class ClaseObsidianApp(ctk.CTk):
         self.after(0, lambda: (self.progress_bar.set(value),
                                self.progress_label.configure(text=label)))
 
-    def _start_processing(self):
-        if not self.audio_path:
-            messagebox.showerror("Error", "Selecciona un archivo de audio primero.")
+    # ── queue table ──────────────────────────────────────────────────────────
+
+    def _refresh_table(self):
+        for w in self._table_frame.winfo_children():
+            w.destroy()
+        self._ctk_table = None
+
+        header = ["#", "Archivo", "Asignatura", "Fecha", "PPT", "Estado"]
+        rows = [header]
+        for i, item in enumerate(self.queue):
+            audio_name = os.path.basename(item.audio_path)
+            if len(audio_name) > 22:
+                audio_name = audio_name[:19] + "..."
+            asig = item.asignatura
+            if len(asig) > 18:
+                asig = asig[:15] + "..."
+            rows.append([
+                str(i + 1),
+                audio_name or "—",
+                asig or "—",
+                item.fecha or "—",
+                "✓" if item.pptx_path else "—",
+                item.estado,
+            ])
+
+        self._ctk_table = CTkTable(
+            self._table_frame,
+            values=rows,
+            command=self._on_row_click,
+            hover=True,
+            header_color="#1a4a7a",
+            colors=["#2d2d2d", "#252525"],
+        )
+        self._ctk_table.pack(fill="both", expand=True)
+
+        if self._selected_row is not None and self._selected_row < len(self.queue):
+            self._ctk_table.edit_row(self._selected_row + 1, text_color="#63b3ed")
+
+    def _on_row_click(self, cell):
+        if cell["row"] == 0:
             return
-        if not self.asignatura_combo.get().strip():
-            messagebox.showerror("Error", "Ingresa o selecciona la asignatura.")
+        self._selected_row = cell["row"] - 1
+        self._refresh_table()
+
+    def _add_item(self):
+        vault = self.vault_entry.get().strip() if hasattr(self, "vault_entry") else \
+                os.getenv("OBSIDIAN_VAULT", "")
+        dlg = EditQueueItemDialog(self, vault_folders=scan_vault_folders(vault))
+        self.wait_window(dlg)
+        if dlg.result:
+            self.queue.append(dlg.result)
+            self._selected_row = len(self.queue) - 1
+            self._refresh_table()
+
+    def _edit_item(self):
+        if self._selected_row is None or self._selected_row >= len(self.queue):
+            messagebox.showwarning("Advertencia", "Selecciona un elemento de la cola.")
+            return
+        item = self.queue[self._selected_row]
+        if item.estado == "procesando":
+            messagebox.showwarning("Advertencia", "No se puede editar un elemento en proceso.")
+            return
+        vault = self.vault_entry.get().strip() if hasattr(self, "vault_entry") else \
+                os.getenv("OBSIDIAN_VAULT", "")
+        dlg = EditQueueItemDialog(self, item=item, vault_folders=scan_vault_folders(vault))
+        self.wait_window(dlg)
+        if dlg.result:
+            dlg.result.estado = item.estado
+            self.queue[self._selected_row] = dlg.result
+            self._refresh_table()
+
+    def _remove_item(self):
+        if self._selected_row is None or self._selected_row >= len(self.queue):
+            messagebox.showwarning("Advertencia", "Selecciona un elemento de la cola.")
+            return
+        if self.queue[self._selected_row].estado == "procesando":
+            messagebox.showwarning("Advertencia", "No se puede quitar un elemento en proceso.")
+            return
+        self.queue.pop(self._selected_row)
+        if self.queue:
+            self._selected_row = min(self._selected_row, len(self.queue) - 1)
+        else:
+            self._selected_row = None
+        self._refresh_table()
+
+    def _apply_to_all(self):
+        if self._selected_row is None or self._selected_row >= len(self.queue):
+            messagebox.showwarning("Advertencia", "Selecciona el elemento fuente.")
+            return
+        src = self.queue[self._selected_row]
+        for i, item in enumerate(self.queue):
+            if i != self._selected_row:
+                item.asignatura = src.asignatura
+                item.fecha = src.fecha
+        self._refresh_table()
+
+    # ── processing ───────────────────────────────────────────────────────────
+
+    def _start_processing(self):
+        pending = [i for i, item in enumerate(self.queue) if item.estado == "pendiente"]
+        if not pending:
+            messagebox.showerror("Error", "No hay elementos pendientes en la cola.")
             return
 
         if self.dest_var.get() == "file":
-            fmt = self.format_var.get()
-            ext = ".pdf" if fmt == "pdf" else ".md"
-            nombre = f"{self.fecha_entry.get().strip()} - {self.asignatura_combo.get().strip()}{ext}"
-            path = filedialog.asksaveasfilename(
-                title="Guardar documento",
-                defaultextension=ext,
-                initialfile=nombre,
-                filetypes=[("PDF", "*.pdf")] if fmt == "pdf" else [("Markdown", "*.md")],
-            )
-            if not path:
+            folder = filedialog.askdirectory(title="Seleccionar carpeta de destino")
+            if not folder:
                 return
-            self._save_path = path
+            self._save_folder = folder
         else:
-            self._save_path = None
+            self._save_folder = None
 
         self.process_btn.configure(state="disabled", text="⏳  Procesando...")
         self.log_box.delete("1.0", "end")
         self.progress_bar.set(0)
         threading.Thread(target=self._process, daemon=True).start()
 
-    # ── pipeline ─────────────────────────────────────────────────────────────
-
     def _process(self):
+        pending = [i for i, item in enumerate(self.queue) if item.estado == "pendiente"]
+        total = len(pending)
+        success = 0
         try:
-            transcription = self._transcribe()
+            for step, idx in enumerate(pending):
+                item = self.queue[idx]
+                item.estado = "procesando"
+                self.after(0, self._refresh_table)
 
-            pptx_text = ""
-            if self.pptx_path:
-                self._log("📊 Extrayendo texto del PowerPoint...")
-                pptx_text = extract_pptx(self.pptx_path)
-                self._log(f"✅ PPT procesado — {len(pptx_text.split())} palabras")
+                try:
+                    self._log(f"\n[{step + 1}/{total}] 🎵 {os.path.basename(item.audio_path)}")
+                    transcription = self._transcribe(item.audio_path)
 
-            is_obsidian_md = (self.dest_var.get() == "obsidian" and self.format_var.get() == "md")
+                    pptx_text = ""
+                    if item.pptx_path:
+                        self._log("📊 Extrayendo texto del PowerPoint...")
+                        pptx_text = extract_pptx(item.pptx_path)
+                        self._log(f"✅ PPT procesado — {len(pptx_text.split())} palabras")
 
-            content = self._call_claude(
-                transcription,
-                self.asignatura_combo.get().strip(),
-                self.fecha_entry.get().strip(),
-                pptx_text=pptx_text,
-                include_mermaid=is_obsidian_md,
-            )
-            full = content + f"\n\n---\n\n## 📄 Transcripción\n\n{transcription}"
-            self._save(full, self.asignatura_combo.get().strip(), self.fecha_entry.get().strip())
-            self._set_progress(1.0, "¡Completado!")
+                    is_obsidian_md = (self.dest_var.get() == "obsidian" and self.format_var.get() == "md")
+                    content = self._call_claude(
+                        transcription,
+                        item.asignatura,
+                        item.fecha,
+                        pptx_text=pptx_text,
+                        include_mermaid=is_obsidian_md,
+                    )
+                    full = content + f"\n\n---\n\n## 📄 Transcripción\n\n{transcription}"
+                    self._save(full, item.asignatura, item.fecha)
 
-        except Exception as e:
-            logging.exception("Error durante el procesamiento")
-            self._log(f"❌ Error: {type(e).__name__}: {e}")
-            self._set_progress(0, "Error al procesar")
-            self.after(0, lambda: messagebox.showerror("Error", f"{type(e).__name__}: {e}"))
+                    item.estado = "listo"
+                    success += 1
+                    self._set_progress((step + 1) / total, f"[{step + 1}/{total}] Completado")
+
+                except Exception as e:
+                    logging.exception(f"Error procesando {item.audio_path}")
+                    self._log(f"❌ Error: {type(e).__name__}: {e}")
+                    item.estado = "error"
+
+                self.after(0, self._refresh_table)
+
+            self._set_progress(1.0, f"¡Completado! {success}/{total} exitosos")
         finally:
             self.after(0, lambda: self.process_btn.configure(
-                state="normal", text="🚀  Procesar Clase"))
+                state="normal", text="🚀  Procesar Cola"))
 
-    def _transcribe(self) -> str:
+    def _transcribe(self, audio_path: str) -> str:
         from faster_whisper import WhisperModel
 
-        self._log("⏳ Cargando modelo Whisper...")
-        self._set_progress(0.05, "Cargando modelo...")
-        self._whisper_model = WhisperModel(self.model_var.get(), device="cuda", compute_type="int8")
-        model = self._whisper_model
+        if self._whisper_model is None:
+            self._log("⏳ Cargando modelo Whisper...")
+            self._set_progress(0.05, "Cargando modelo...")
+            self._whisper_model = WhisperModel(self.model_var.get(), device="cuda", compute_type="int8")
 
+        model = self._whisper_model
         self._log(f"🎙️ Transcribiendo con {self.model_var.get()}...")
         self._set_progress(0.1, "Transcribiendo audio...")
-        segments, info = model.transcribe(self.audio_path, language="es", beam_size=5)
+        segments, info = model.transcribe(audio_path, language="es", beam_size=5)
 
         parts = []
         for seg in segments:
@@ -514,7 +680,7 @@ class ClaseObsidianApp(ctk.CTk):
             folder = subfolder if os.path.isdir(subfolder) else vault
             filepath = os.path.join(folder, filename)
         else:
-            filepath = self._save_path
+            filepath = os.path.join(self._save_folder, filename)
 
         if fmt == "pdf":
             save_pdf(content, filepath)
