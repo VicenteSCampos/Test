@@ -160,7 +160,7 @@ class EditQueueItemDialog(ctk.CTkToplevel):
     def __init__(self, parent, item: QueueItem = None, vault_folders: list = None):
         super().__init__(parent)
         self.title("Configurar elemento")
-        self.geometry("520x720")
+        self.geometry("520x540")
         self.resizable(False, False)
         self.grab_set()
         self.result: QueueItem | None = None
@@ -172,8 +172,12 @@ class EditQueueItemDialog(ctk.CTkToplevel):
     def _setup_ui(self, item: QueueItem = None):
         pad = {"padx": 20, "pady": (8, 2)}
 
+        # Scrollable form (altura fija — activa el slider cuando el contenido excede)
+        scroll = ctk.CTkScrollableFrame(self, height=460, fg_color="transparent")
+        scroll.pack(fill="x", padx=0, pady=(0, 0))
+
         # Audio section
-        audio_header = ctk.CTkFrame(self, fg_color="transparent")
+        audio_header = ctk.CTkFrame(scroll, fg_color="transparent")
         audio_header.pack(fill="x", **pad)
         ctk.CTkLabel(audio_header, text="Archivos de Audio",
                      font=ctk.CTkFont(weight="bold"), anchor="w").pack(side="left")
@@ -181,15 +185,15 @@ class EditQueueItemDialog(ctk.CTkToplevel):
                       command=self._add_audio).pack(side="right")
 
         # Scrollable list of audio files (fixed height — scrolls internally)
-        self._audio_list_frame = ctk.CTkScrollableFrame(self, height=120, fg_color="#1e1e1e")
+        self._audio_list_frame = ctk.CTkScrollableFrame(scroll, height=120, fg_color="#1e1e1e")
         self._audio_list_frame.pack(fill="x", padx=20, pady=(4, 10))
         self._audio_list_frame.grid_columnconfigure(0, weight=1)
         self._render_audio_list()
 
         # PPT
-        ctk.CTkLabel(self, text="PowerPoint (opcional)",
+        ctk.CTkLabel(scroll, text="PowerPoint (opcional)",
                      font=ctk.CTkFont(weight="bold"), anchor="w").pack(fill="x", **pad)
-        ppt_row = ctk.CTkFrame(self, fg_color="transparent")
+        ppt_row = ctk.CTkFrame(scroll, fg_color="transparent")
         ppt_row.pack(fill="x", padx=20, pady=(0, 10))
         ppt_row.grid_columnconfigure(0, weight=1)
         self._pptx_label = ctk.CTkLabel(
@@ -207,29 +211,29 @@ class EditQueueItemDialog(ctk.CTkToplevel):
                       command=self._clear_pptx).grid(row=0, column=1)
 
         # Asignatura
-        ctk.CTkLabel(self, text="Asignatura",
+        ctk.CTkLabel(scroll, text="Asignatura",
                      font=ctk.CTkFont(weight="bold"), anchor="w").pack(fill="x", **pad)
-        self._asig_combo = ctk.CTkComboBox(self, values=self._vault_folders, height=36)
+        self._asig_combo = ctk.CTkComboBox(scroll, values=self._vault_folders, height=36)
         self._asig_combo.set(item.asignatura if item else "")
         self._asig_combo.pack(fill="x", padx=20, pady=(0, 10))
 
         # Fecha
-        ctk.CTkLabel(self, text="Fecha",
+        ctk.CTkLabel(scroll, text="Fecha",
                      font=ctk.CTkFont(weight="bold"), anchor="w").pack(fill="x", **pad)
-        self._fecha_entry = ctk.CTkEntry(self, height=36)
+        self._fecha_entry = ctk.CTkEntry(scroll, height=36)
         self._fecha_entry.insert(0, item.fecha if item else datetime.now().strftime("%Y-%m-%d"))
         self._fecha_entry.pack(fill="x", padx=20, pady=(0, 10))
 
         # Nombre del archivo
-        ctk.CTkLabel(self, text="Nombre del archivo (opcional)",
+        ctk.CTkLabel(scroll, text="Nombre del archivo (opcional)",
                      font=ctk.CTkFont(weight="bold"), anchor="w").pack(fill="x", **pad)
-        ctk.CTkLabel(self, text="Si se deja vacío se usará: fecha - asignatura",
+        ctk.CTkLabel(scroll, text="Si se deja vacío se usará: fecha - asignatura",
                      text_color="gray", anchor="w", font=ctk.CTkFont(size=11)).pack(fill="x", padx=20)
-        self._nombre_entry = ctk.CTkEntry(self, height=36, placeholder_text="ej: Clase 1 - Introducción")
+        self._nombre_entry = ctk.CTkEntry(scroll, height=36, placeholder_text="ej: Clase 1 - Introducción")
         self._nombre_entry.insert(0, item.nombre if item else "")
         self._nombre_entry.pack(fill="x", padx=20, pady=(4, 14))
 
-        # Buttons
+        # Buttons — fuera del scroll, siempre visibles
         btn_row = ctk.CTkFrame(self, fg_color="transparent")
         btn_row.pack(fill="x", padx=20, pady=(0, 16))
         ctk.CTkButton(btn_row, text="Cancelar", fg_color="gray30", hover_color="gray40",
