@@ -160,14 +160,17 @@ class EditQueueItemDialog(ctk.CTkToplevel):
     def __init__(self, parent, item: QueueItem = None, vault_folders: list = None):
         super().__init__(parent)
         self.title("Configurar elemento")
+        self.withdraw()
         self.geometry("520x540")
         self.resizable(False, False)
-        self.grab_set()
         self.result: QueueItem | None = None
         self._audio_paths: list[str] = list(item.audio_paths) if item else []
         self._pptx_path = item.pptx_path if item else ""
         self._vault_folders = vault_folders or []
         self._setup_ui(item)
+        self.update_idletasks()
+        self.deiconify()
+        self.grab_set()
 
     def _setup_ui(self, item: QueueItem = None):
         pad = {"padx": 20, "pady": (8, 2)}
