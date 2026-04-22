@@ -313,8 +313,6 @@ class _Worker(QThread):
                 audio_path,
                 language="es",
                 beam_size=5,
-                vad_filter=True,
-                vad_parameters={"min_silence_duration_ms": 500},
                 condition_on_previous_text=False,
                 no_speech_threshold=0.6,
                 compression_ratio_threshold=2.4,
