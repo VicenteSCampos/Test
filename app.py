@@ -407,7 +407,7 @@ class _Worker(QThread):
             f"3. **Conexiones y transiciones:** [cómo se encadenaron los temas]\n"
             f"4. **Cierre / Conclusión:** [cómo terminó o qué se dejó abierto]\n\n"
             f"## 🔑 Conceptos Clave y Definiciones\n"
-            f"[Para cada concepto importante usa este formato exacto:]\n\n"
+            f"[Para cada concepto importante de la transcripción y el PPT usa este formato exacto:]\n\n"
             f"**Término:** Definición clara y concisa.\n"
             f"> Ejemplo: [si el profesor o el PPT dieron un ejemplo]\n\n"
             f"## 📊 Marco Lógico\n"
