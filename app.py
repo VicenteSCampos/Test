@@ -123,6 +123,17 @@ def extract_pptx(filepath: str) -> str:
     return "\n".join(slides)
 
 
+def extract_pdf(filepath: str) -> str:
+    from pypdf import PdfReader
+    reader = PdfReader(filepath)
+    pages = []
+    for i, page in enumerate(reader.pages, 1):
+        text = (page.extract_text() or "").strip()
+        if text:
+            pages.append(f"[Página {i}]: {text}")
+    return "\n".join(pages)
+
+
 def scan_vault_folders(vault: str) -> list:
     if not os.path.isdir(vault):
         return []
@@ -264,9 +275,14 @@ class _Worker(QThread):
 
                     pptx_text = ""
                     if item.pptx_path:
-                        self._log("📊 Extrayendo texto del PowerPoint...")
-                        pptx_text = extract_pptx(item.pptx_path)
-                        self._log(f"✅ PPT procesado — {len(pptx_text.split())} palabras")
+                        ext = os.path.splitext(item.pptx_path)[1].lower()
+                        if ext == ".pdf":
+                            self._log("📄 Extrayendo texto del PDF...")
+                            pptx_text = extract_pdf(item.pptx_path)
+                        else:
+                            self._log("📊 Extrayendo texto del PowerPoint...")
+                            pptx_text = extract_pptx(item.pptx_path)
+                        self._log(f"✅ Diapositivas procesadas — {len(pptx_text.split())} palabras")
 
                     is_obsidian_md = (app._dest == "obsidian" and app._fmt == "md")
                     content = self._call_claude(
@@ -644,7 +660,7 @@ class EditQueueItemDialog(QDialog):
     def _select_pptx(self):
         path, _ = QFileDialog.getOpenFileName(
             self, "Seleccionar PowerPoint", "",
-            "PowerPoint (*.pptx *.ppt)",
+            "Diapositivas (*.pptx *.ppt *.pdf)",
         )
         if path:
             self._pptx_path = path
