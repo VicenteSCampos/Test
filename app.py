@@ -299,7 +299,7 @@ class _Worker(QThread):
         if app._whisper_model is None:
             self._log("⏳ Cargando modelo Whisper...")
             self._set_progress(0.05, "Cargando modelo...")
-            app._whisper_model = WhisperModel(app._model, device="cuda", compute_type="int8")
+            app._whisper_model = WhisperModel(app._model, device="cuda", compute_type="int8_float16")
 
         model = app._whisper_model
         all_parts = []
@@ -309,7 +309,17 @@ class _Worker(QThread):
             self._log(f"🎙️ {prefix}Transcribiendo {os.path.basename(audio_path)}...")
             self._set_progress(0.1, f"{prefix}Transcribiendo audio...")
 
-            segments, info = model.transcribe(audio_path, language="es", beam_size=5)
+            segments, info = model.transcribe(
+                audio_path,
+                language="es",
+                beam_size=5,
+                vad_filter=True,
+                vad_parameters={"min_silence_duration_ms": 500},
+                condition_on_previous_text=False,
+                no_speech_threshold=0.6,
+                compression_ratio_threshold=2.4,
+                initial_prompt="Transcripción de clase universitaria en español.",
+            )
             parts = []
             for seg in segments:
                 parts.append(seg.text.strip())
